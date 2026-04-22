@@ -14,7 +14,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("Usage: go run main.go [step-1|step-2]")
+		log.Fatal("Usage: go run main.go [step-1|step-2|step-3]")
 	}
 	step := os.Args[1]
 
@@ -86,8 +86,26 @@ func main() {
 			log.Fatal("Sheets sync error:", err)
 		}
 
+	case "step-3":
+		// ── Story Summary ────────────────────────────────────────
+		fmt.Println("Reading from database...")
+		allIssues, err := repo.GetAllForSync()
+		if err != nil {
+			log.Fatal("DB read error:", err)
+		}
+		fmt.Printf("Total %d issues\n", len(allIssues))
+
+		fmt.Println("Syncing Story Summary to Google Sheets...")
+		sheetClient, err := sheets.NewClient(cfg.CredentialsPath, cfg.SpreadsheetID)
+		if err != nil {
+			log.Fatal("Sheets client error:", err)
+		}
+		if err := sheetClient.SyncStorySummary("Story Summary", allIssues); err != nil {
+			log.Fatal("Story Summary sync error:", err)
+		}
+
 	default:
-		log.Fatalf("Unknown step: %s. Use step-1 or step-2", step)
+		log.Fatalf("Unknown step: %s. Use step-1, step-2, or step-3", step)
 	}
 
 	fmt.Println("Done!")
