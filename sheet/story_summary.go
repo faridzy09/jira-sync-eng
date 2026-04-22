@@ -124,8 +124,8 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 		if issue.RetestHours != nil {
 			a.Retest += *issue.RetestHours
 		}
-		if issue.CodeReviewHours != nil {
-			a.CodeRevBug += *issue.CodeReviewHours
+		if issue.CodeReviewBugHours != nil {
+			a.CodeRevBug += *issue.CodeReviewBugHours
 		}
 
 		if issue.CodeReviewHours != nil {
