@@ -179,7 +179,20 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 
 // GetAllForSync: ambil semua data untuk di-sync ke Sheet
 func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
-	rows, err := r.db.Query(`SELECT * FROM jira_issues ORDER BY actual_task_done_week asc`)
+	rows, err := r.db.Query(`
+		SELECT
+			key, issue_type, summary, assignee, pic_lead_engineer,
+			status_category_changed, done_week, fix_versions,
+			fix_version_released, fix_version_release_date, release_week,
+			story_point, from_type, parent, coding_hours,
+			code_review_hours, testing_hours, hanging_bug_hours,
+			code_review_bug_hours, fixing_hours, retest_hours,
+			count_fix_version, additional_task, accident_bug,
+			bug_from_category, pic_lead_qa, actual_task_start_date,
+			actual_task_done_date, actual_task_done_week,
+			actual_task_done_month, actual_task_done_year,
+			task_status, status_story, synced_at
+		FROM jira_issues ORDER BY actual_task_done_week ASC`)
 	if err != nil {
 		return nil, err
 	}
