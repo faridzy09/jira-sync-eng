@@ -11,26 +11,30 @@ import (
 )
 
 var SUMMARY_HEADERS = []interface{}{
-	"Key",                   // 0
-	"PIC Lead Engineer",     // 1
-	"PIC Lead QA",           // 2
-	"Done Week",             // 3
-	"Release Week",          // 4
-	"Total SP",              // 5
-	"SP QA",                 // 6
-	"SP Eng",                // 7
-	"Coding Hours",          // 8
-	"Code Review Hours",     // 9
-	"Testing Hours",         // 10
-	"Fixing Hours",          // 11
-	"Code Review Bug Hours", // 12
-	"Retest Hours",          // 13
-	"Total Hours",           // 14
-	"SLA (Hours/SP)",        // 15
-	"Bug Count",             // 16
-	"Fix Versions",          // 17
-	"Has FE",                // 18
-	"Status Story",          // 19
+	"Key",                            // 0
+	"PIC Lead Engineer",              // 1
+	"PIC Lead QA",                    // 2
+	"Done Week",                      // 3
+	"Release Week",                   // 4
+	"Total SP",                       // 5
+	"SP QA",                          // 6
+	"SP Eng",                         // 7
+	"Coding Hours",                   // 8
+	"Code Review Hours",              // 9
+	"Code Review Day Work Hours",     // 10
+	"Testing Hours",                  // 11
+	"Fixing Hours",                   // 12
+	"Code Review Bug Hours",          // 13
+	"Code Review Bug Day Work Hours", // 14
+	"Retest Hours",                   // 15
+	"Total Hours",                    // 16
+	"Total Day Work Hours",           // 17
+	"SLA (Hours/SP)",                 // 18
+	"SLA Day Work (Hours/SP)",        // 19
+	"Bug Count",                      // 20
+	"Fix Versions",                   // 21
+	"Has FE",                         // 22
+	"Status Story",                   // 23
 }
 
 var keyFilters = []string{"IM", "CPB", "WB"}
@@ -46,17 +50,19 @@ type storyBase struct {
 }
 
 type storyAgg struct {
-	SP         float64
-	SPQA       float64
-	SPEng      float64
-	Coding     float64
-	CodeReview float64
-	Testing    float64
-	Fixing     float64
-	CodeRevBug float64
-	Retest     float64
-	BugCount   int
-	HasFE      bool
+	SP           float64
+	SPQA         float64
+	SPEng        float64
+	Coding       float64
+	CodeReview   float64
+	CodeReviewDW float64 // day work hours
+	Testing      float64
+	Fixing       float64
+	CodeRevBug   float64
+	CodeRevBugDW float64 // day work hours
+	Retest       float64
+	BugCount     int
+	HasFE        bool
 }
 
 func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) error {
@@ -127,9 +133,15 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 		if issue.CodeReviewBugHours != nil {
 			a.CodeRevBug += *issue.CodeReviewBugHours
 		}
+		if issue.CodeReviewBugDayWorkHours != nil {
+			a.CodeRevBugDW += *issue.CodeReviewBugDayWorkHours
+		}
 
 		if issue.CodeReviewHours != nil {
 			a.CodeReview += *issue.CodeReviewHours
+		}
+		if issue.CodeReviewDayWorkHours != nil {
+			a.CodeReviewDW += *issue.CodeReviewDayWorkHours
 		}
 
 		if issue.IssueType == "Bug" {
@@ -196,9 +208,12 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 			a = &storyAgg{}
 		}
 		totalHours := a.Coding + a.CodeReview + a.Testing + a.Fixing + a.CodeRevBug + a.Retest
+		totalDWHours := a.Coding + a.CodeReviewDW + a.Testing + a.Fixing + a.CodeRevBugDW + a.Retest
 		sla := interface{}(nil)
+		slaDW := interface{}(nil)
 		if a.SP > 0 {
 			sla = round2(totalHours / a.SP)
+			slaDW = round2(totalDWHours / a.SP)
 		}
 		hasFE := ""
 		if a.HasFE {
@@ -207,21 +222,21 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 		rows = append(rows, []interface{}{
 			key, base.PicEng, base.PicQA, base.DoneWeek, base.ReleaseWeek,
 			round2(a.SP), round2(a.SPQA), round2(a.SPEng),
-			round2(a.Coding), round2(a.CodeReview), round2(a.Testing),
-			round2(a.Fixing), round2(a.CodeRevBug), round2(a.Retest),
-			round2(totalHours), sla, a.BugCount, base.FixVersions, hasFE, base.Status,
+			round2(a.Coding), round2(a.CodeReview), round2(a.CodeReviewDW),
+			round2(a.Testing), round2(a.Fixing),
+			round2(a.CodeRevBug), round2(a.CodeRevBugDW), round2(a.Retest),
+			round2(totalHours), round2(totalDWHours), sla, slaDW,
+			a.BugCount, base.FixVersions, hasFE, base.Status,
 		})
 	}
 
-	// ── STEP 5: Clear sheet ───────────────────────────────────
-	_, err := c.service.Spreadsheets.Values.Clear(
-		c.spreadsheetID, sheetName+"!A:AZ", &sheets.ClearValuesRequest{},
-	).Do()
-	if err != nil {
-		return fmt.Errorf("clear error: %w", err)
+	// ── STEP 5: Hapus dan buat ulang sheet ───────────────────
+	if err := c.clearSheet(sheetName, len(rows)+1); err != nil {
+		return err
 	}
 
 	// ── STEP 6: Write header ──────────────────────────────────
+	var err error
 	_, err = c.service.Spreadsheets.Values.Update(
 		c.spreadsheetID, sheetName+"!A1",
 		&sheets.ValueRange{Values: [][]interface{}{SUMMARY_HEADERS}},

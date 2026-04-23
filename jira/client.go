@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+var wib = time.FixedZone("WIB", 7*3600)
+
 type Config struct {
 	BaseURL  string
 	Email    string
@@ -298,12 +300,22 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 
 	// ── Hours map (dari changelog) ───────────────────────────
 	hoursMap := map[string]float64{}
+	dayWorkHoursMap := map[string]float64{}
 	if !isStory {
 		hoursMap = calcHoursByStatus(issue)
+		dayWorkHoursMap = calcDayWorkHoursByStatus(issue)
 	}
 	getHours := func(status string) *float64 {
 		key := strings.ToUpper(strings.TrimSpace(status))
 		if v, ok := hoursMap[key]; ok {
+			rounded := round2(v)
+			return &rounded
+		}
+		return nil
+	}
+	getDayWorkHours := func(status string) *float64 {
+		key := strings.ToUpper(strings.TrimSpace(status))
+		if v, ok := dayWorkHoursMap[key]; ok {
 			rounded := round2(v)
 			return &rounded
 		}
@@ -408,39 +420,42 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 	}
 
 	return models.JiraIssue{
-		Key:                   issue.Key,
-		IssueType:             issueType,
-		Summary:               fields.Summary,
-		Assignee:              assignee,
-		PicLeadEngineer:       picEng,
-		StatusCategoryChanged: statusCategoryChanged,
-		DoneWeek:              doneWeekPtr,
-		FixVersions:           fixVersionsStr,
-		FixVersionReleased:    fixVersionReleased,
-		FixVersionReleaseDate: fixVersionReleaseDate,
-		ReleaseWeek:           releaseWeek,
-		StoryPoint:            fields.StoryPoint,
-		FromType:              fromType,
-		Parent:                parentKey,
-		CodingHours:           nilIfNotTask(getHours("IN PROGRESS"), !isStory && !isEligibleBug),
-		CodeReviewHours:       nilIfNotTask(getHours("CODE REVIEW"), !isStory && !isEligibleBug),
-		TestingHours:          nilIfNotTask(getHours("IN QA"), !isStory),
-		HangingBugHours:       nil,
-		CodeReviewBugHours:    nilIfNotTask(getHours("CODE REVIEW"), isEligibleBug),
-		FixingHours:           nilIfNotTask(getHours("IN PROGRESS"), isEligibleBug),
-		RetestHours:           nilIfNotTask(getHours("RETESTING"), !isStory && isBug),
-		CountFixVersion:       countFV,
-		AdditionalTask:        additionalTaskVal,
-		AccidentBug:           accidentBugVal,
-		BugFromCategory:       bugFromCategory,
-		PicLeadQA:             picQA,
-		ActualTaskStartDate:   actualStartDate,
-		ActualTaskDoneDate:    doneDateAt,
-		ActualTaskDoneWeek:    taskDoneWeekStr,
-		ActualTaskDoneMonth:   taskDoneMonthStr,
-		ActualTaskDoneYear:    taskDoneYearStr,
-		TaskStatus:            taskStatus,
-		StatusStory:           statusStory,
+		Key:                       issue.Key,
+		IssueType:                 issueType,
+		Summary:                   fields.Summary,
+		Assignee:                  assignee,
+		PicLeadEngineer:           picEng,
+		StatusCategoryChanged:     statusCategoryChanged,
+		DoneWeek:                  doneWeekPtr,
+		FixVersions:               fixVersionsStr,
+		FixVersionReleased:        fixVersionReleased,
+		FixVersionReleaseDate:     fixVersionReleaseDate,
+		ReleaseWeek:               releaseWeek,
+		StoryPoint:                fields.StoryPoint,
+		FromType:                  fromType,
+		Parent:                    parentKey,
+		CodingHours:               nilIfNotTask(getHours("IN PROGRESS"), !isStory && !isEligibleBug),
+		CodeReviewHours:           nilIfNotTask(getHours("CODE REVIEW"), !isStory && !isEligibleBug),
+		CodeReviewDayWorkHours:    nilIfNotTask(getDayWorkHours("CODE REVIEW"), !isStory && !isEligibleBug),
+		TestingHours:              nilIfNotTask(getHours("IN QA"), !isStory),
+		HangingBugHours:           nil,
+		HangingBugDayWorkHours:    nil,
+		CodeReviewBugHours:        nilIfNotTask(getHours("CODE REVIEW"), isEligibleBug),
+		CodeReviewBugDayWorkHours: nilIfNotTask(getDayWorkHours("CODE REVIEW"), isEligibleBug),
+		FixingHours:               nilIfNotTask(getHours("IN PROGRESS"), isEligibleBug),
+		RetestHours:               nilIfNotTask(getHours("RETESTING"), !isStory && isBug),
+		CountFixVersion:           countFV,
+		AdditionalTask:            additionalTaskVal,
+		AccidentBug:               accidentBugVal,
+		BugFromCategory:           bugFromCategory,
+		PicLeadQA:                 picQA,
+		ActualTaskStartDate:       actualStartDate,
+		ActualTaskDoneDate:        doneDateAt,
+		ActualTaskDoneWeek:        taskDoneWeekStr,
+		ActualTaskDoneMonth:       taskDoneMonthStr,
+		ActualTaskDoneYear:        taskDoneYearStr,
+		TaskStatus:                taskStatus,
+		StatusStory:               statusStory,
 	}
 }
 
@@ -704,6 +719,117 @@ func getBugCategory(reason string) string {
 		return v
 	}
 	return "Unknown"
+}
+
+// calcDayWorkHoursByStatus menghitung jam kerja efektif (Senin-Jumat, 09:00-18:00 WIB, exclude weekend)
+// per status dari changelog.
+func calcDayWorkHoursByStatus(issue *RawIssue) map[string]float64 {
+	out := map[string]float64{}
+	type event struct {
+		t    time.Time
+		from string
+		to   string
+	}
+	var events []event
+
+	for _, h := range issue.Changelog.Histories {
+		t, err := parseJiraTime(h.Created)
+		if err != nil {
+			continue
+		}
+		for _, item := range h.Items {
+			if item.Field == "status" {
+				events = append(events, event{t: t, from: item.FromString, to: item.ToString})
+			}
+		}
+	}
+
+	if len(events) == 0 {
+		return out
+	}
+
+	// Sort by time asc
+	for i := 1; i < len(events); i++ {
+		for j := i; j > 0 && events[j].t.Before(events[j-1].t); j-- {
+			events[j], events[j-1] = events[j-1], events[j]
+		}
+	}
+
+	currentStatus := events[0].from
+	currentTime := events[0].t
+	for _, e := range events {
+		if currentStatus != "" {
+			key := strings.ToUpper(strings.TrimSpace(currentStatus))
+			out[key] += calcWorkHoursInInterval(currentTime, e.t)
+		}
+		currentStatus = e.to
+		currentTime = e.t
+	}
+	// Tail sampai sekarang
+	if currentStatus != "" {
+		key := strings.ToUpper(strings.TrimSpace(currentStatus))
+		out[key] += calcWorkHoursInInterval(currentTime, time.Now())
+	}
+	return out
+}
+
+// calcWorkHoursInInterval menghitung total jam kerja efektif antara from dan to.
+// Jam kerja: Senin-Jumat, 09:00–18:00 WIB, exclude weekend dan hari libur nasional.
+func calcWorkHoursInInterval(from, to time.Time) float64 {
+	if !to.After(from) {
+		return 0
+	}
+	from = from.In(wib)
+	to = to.In(wib)
+
+	workStart := 9 // 09:00
+	workEnd := 18  // 18:00
+
+	total := 0.0
+	cursor := from
+	for cursor.Before(to) {
+		wd := cursor.Weekday()
+		// Skip weekend
+		if wd == time.Saturday || wd == time.Sunday {
+			cursor = nextWorkMorning(cursor, workStart)
+			continue
+		}
+		// Skip hari libur nasional
+		if models.IsHoliday(cursor) {
+			cursor = nextWorkMorning(cursor, workStart)
+			continue
+		}
+
+		dayStart := time.Date(cursor.Year(), cursor.Month(), cursor.Day(), workStart, 0, 0, 0, wib)
+		dayEnd := time.Date(cursor.Year(), cursor.Month(), cursor.Day(), workEnd, 0, 0, 0, wib)
+
+		segStart := cursor
+		if segStart.Before(dayStart) {
+			segStart = dayStart
+		}
+		segEnd := to
+		if segEnd.After(dayEnd) {
+			segEnd = dayEnd
+		}
+		if segEnd.After(segStart) {
+			total += segEnd.Sub(segStart).Hours()
+		}
+
+		next := time.Date(cursor.Year(), cursor.Month(), cursor.Day()+1, workStart, 0, 0, 0, wib)
+		if !next.Before(to) {
+			break
+		}
+		cursor = next
+	}
+	return round2(total)
+}
+
+func nextWorkMorning(t time.Time, hour int) time.Time {
+	next := time.Date(t.Year(), t.Month(), t.Day()+1, hour, 0, 0, 0, t.Location())
+	for next.Weekday() == time.Saturday || next.Weekday() == time.Sunday || models.IsHoliday(next) {
+		next = next.AddDate(0, 0, 1)
+	}
+	return next
 }
 
 func round2(v float64) float64 {

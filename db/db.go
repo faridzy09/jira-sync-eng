@@ -51,9 +51,12 @@ func (r *Repository) CreateTableIfNotExists() error {
         parent                   TEXT,
         coding_hours             FLOAT,
         code_review_hours        FLOAT,
+		code_review_day_work_hours FLOAT,
         testing_hours            FLOAT,
         hanging_bug_hours        FLOAT,
+		hanging_bug_day_work_hours FLOAT,
         code_review_bug_hours    FLOAT,
+		code_review_bug_day_work_hours    FLOAT,
         fixing_hours             FLOAT,
         retest_hours             FLOAT,
         count_fix_version        INTEGER,
@@ -86,7 +89,10 @@ func (r *Repository) CreateTableIfNotExists() error {
         ALTER TABLE jira_issues ALTER COLUMN pic_lead_qa TYPE TEXT;
     EXCEPTION WHEN others THEN
         -- ignore if already TEXT
-    END$$;`
+    END$$;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS code_review_day_work_hours FLOAT;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_day_work_hours FLOAT;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS code_review_bug_day_work_hours FLOAT;`
 	_, err = r.db.Exec(alterQuery)
 	return err
 }
@@ -120,8 +126,10 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 		"status_category_changed", "done_week", "fix_versions",
 		"fix_version_released", "fix_version_release_date", "release_week",
 		"story_point", "from_type", "parent", "coding_hours",
-		"code_review_hours", "testing_hours", "hanging_bug_hours",
-		"code_review_bug_hours", "fixing_hours", "retest_hours",
+		"code_review_hours", "code_review_day_work_hours",
+		"testing_hours", "hanging_bug_hours", "hanging_bug_day_work_hours",
+		"code_review_bug_hours", "code_review_bug_day_work_hours",
+		"fixing_hours", "retest_hours",
 		"count_fix_version", "additional_task", "accident_bug",
 		"bug_from_category", "pic_lead_qa", "actual_task_start_date",
 		"actual_task_done_date", "actual_task_done_week",
@@ -146,9 +154,10 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 			issue.PicLeadEngineer, issue.StatusCategoryChanged, issue.DoneWeek,
 			issue.FixVersions, issue.FixVersionReleased, issue.FixVersionReleaseDate,
 			issue.ReleaseWeek, issue.StoryPoint, issue.FromType, issue.Parent,
-			issue.CodingHours, issue.CodeReviewHours, issue.TestingHours,
-			issue.HangingBugHours, issue.CodeReviewBugHours, issue.FixingHours,
-			issue.RetestHours, issue.CountFixVersion, issue.AdditionalTask,
+			issue.CodingHours, issue.CodeReviewHours, issue.CodeReviewDayWorkHours,
+			issue.TestingHours, issue.HangingBugHours, issue.HangingBugDayWorkHours,
+			issue.CodeReviewBugHours, issue.CodeReviewBugDayWorkHours,
+			issue.FixingHours, issue.RetestHours, issue.CountFixVersion, issue.AdditionalTask,
 			issue.AccidentBug, issue.BugFromCategory, issue.PicLeadQA,
 			issue.ActualTaskStartDate, issue.ActualTaskDoneDate,
 			issue.ActualTaskDoneWeek, issue.ActualTaskDoneMonth,
@@ -185,8 +194,10 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			status_category_changed, done_week, fix_versions,
 			fix_version_released, fix_version_release_date, release_week,
 			story_point, from_type, parent, coding_hours,
-			code_review_hours, testing_hours, hanging_bug_hours,
-			code_review_bug_hours, fixing_hours, retest_hours,
+			code_review_hours, code_review_day_work_hours,
+			testing_hours, hanging_bug_hours, hanging_bug_day_work_hours,
+			code_review_bug_hours, code_review_bug_day_work_hours,
+			fixing_hours, retest_hours,
 			count_fix_version, additional_task, accident_bug,
 			bug_from_category, pic_lead_qa, actual_task_start_date,
 			actual_task_done_date, actual_task_done_week,
@@ -206,9 +217,10 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			&issue.PicLeadEngineer, &issue.StatusCategoryChanged, &issue.DoneWeek,
 			&issue.FixVersions, &issue.FixVersionReleased, &issue.FixVersionReleaseDate,
 			&issue.ReleaseWeek, &issue.StoryPoint, &issue.FromType, &issue.Parent,
-			&issue.CodingHours, &issue.CodeReviewHours, &issue.TestingHours,
-			&issue.HangingBugHours, &issue.CodeReviewBugHours, &issue.FixingHours,
-			&issue.RetestHours, &issue.CountFixVersion, &issue.AdditionalTask,
+			&issue.CodingHours, &issue.CodeReviewHours, &issue.CodeReviewDayWorkHours,
+			&issue.TestingHours, &issue.HangingBugHours, &issue.HangingBugDayWorkHours,
+			&issue.CodeReviewBugHours, &issue.CodeReviewBugDayWorkHours,
+			&issue.FixingHours, &issue.RetestHours, &issue.CountFixVersion, &issue.AdditionalTask,
 			&issue.AccidentBug, &issue.BugFromCategory, &issue.PicLeadQA,
 			&issue.ActualTaskStartDate, &issue.ActualTaskDoneDate,
 			&issue.ActualTaskDoneWeek, &issue.ActualTaskDoneMonth,

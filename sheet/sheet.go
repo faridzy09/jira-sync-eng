@@ -49,8 +49,10 @@ var HEADERS = []interface{}{
 	"Status Category Changed", "Done Week", "Fix versions",
 	"fixVersion.released", "fixVersion.releaseDate", "Release Week",
 	"Story Point", "From Type", "Parent", "Coding Hours",
-	"Code Review Hours", "Testing Hours", "Hanging Bug Hours",
-	"Code Review Bug Hours", "Fixing Hours", "Retest Hours",
+	"Code Review Hours", "Code Review Day Work Hours", "Testing Hours",
+	"Hanging Bug Hours", "Hanging Bug Day Work Hours",
+	"Code Review Bug Hours", "Code Review Bug Day Work Hours",
+	"Fixing Hours", "Retest Hours",
 	"Count Fix Version", "Additional Task", "Accident Bug",
 	"Bug From Category", "PIC Lead QA", "Actual Task Start Date",
 	"Actual Task Done Date", "Actual Task Done Week",
@@ -58,18 +60,103 @@ var HEADERS = []interface{}{
 	"Task Status", "Status Story",
 }
 
-func (c *Client) SyncToSheet(sheetName string, issues []models.JiraIssue) error {
-	// 1. Clear sheet
-	clearRange := sheetName + "!A:AZ"
-	_, err := c.service.Spreadsheets.Values.Clear(
-		c.spreadsheetID, clearRange, &sheets.ClearValuesRequest{},
-	).Do()
+// clearSheet membersihkan semua konten dan format sheet, serta expand baris jika kurang.
+// rowCount: jumlah baris yang dibutuhkan.
+func (c *Client) clearSheet(sheetName string, rowCount int) error {
+	ss, err := c.service.Spreadsheets.Get(c.spreadsheetID).Do()
 	if err != nil {
-		return fmt.Errorf("clear error: %w", err)
+		return fmt.Errorf("get spreadsheet error: %w", err)
+	}
+
+	var sheetID int64 = -1
+	var currentRows int64
+	for _, s := range ss.Sheets {
+		if s.Properties.Title == sheetName {
+			sheetID = s.Properties.SheetId
+			currentRows = s.Properties.GridProperties.RowCount
+			break
+		}
+	}
+
+	if sheetID == -1 {
+		// Sheet belum ada, buat baru
+		neededRows := int64(rowCount) + 10
+		if neededRows < 1000 {
+			neededRows = 1000
+		}
+		_, err = c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+			Requests: []*sheets.Request{{
+				AddSheet: &sheets.AddSheetRequest{
+					Properties: &sheets.SheetProperties{
+						Title: sheetName,
+						GridProperties: &sheets.GridProperties{
+							RowCount:    neededRows,
+							ColumnCount: 50,
+						},
+					},
+				},
+			}},
+		}).Do()
+		if err != nil {
+			return fmt.Errorf("add sheet error: %w", err)
+		}
+		fmt.Printf("Sheet '%s' created\n", sheetName)
+		return nil
+	}
+
+	var requests []*sheets.Request
+
+	// Expand baris jika kurang
+	neededRows := int64(rowCount) + 10
+	if neededRows < 1000 {
+		neededRows = 1000
+	}
+	if currentRows < neededRows {
+		requests = append(requests, &sheets.Request{
+			UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+				Properties: &sheets.SheetProperties{
+					SheetId: sheetID,
+					GridProperties: &sheets.GridProperties{
+						RowCount:    neededRows,
+						ColumnCount: 50,
+					},
+				},
+				Fields: "gridProperties.rowCount,gridProperties.columnCount",
+			},
+		})
+	}
+
+	// Clear semua konten + format sekaligus
+	requests = append(requests, &sheets.Request{
+		RepeatCell: &sheets.RepeatCellRequest{
+			Range: &sheets.GridRange{
+				SheetId: sheetID,
+			},
+			Cell:   &sheets.CellData{},
+			Fields: "userEnteredValue,userEnteredFormat",
+		},
+	})
+
+	_, err = c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Do()
+	if err != nil {
+		return fmt.Errorf("clear sheet error: %w", err)
+	}
+
+	fmt.Printf("Sheet '%s' cleared\n", sheetName)
+	return nil
+}
+
+func (c *Client) SyncToSheet(sheetName string, issues []models.JiraIssue) error {
+	// 1. Hapus dan buat ulang sheet
+	if err := c.clearSheet(sheetName, len(issues)+1); err != nil {
+		return err
 	}
 
 	// 2. Tulis header
 	headerRange := sheetName + "!A1"
+	var err error
 	_, err = c.service.Spreadsheets.Values.Update(
 		c.spreadsheetID,
 		headerRange,
@@ -142,9 +229,10 @@ func issueToRow(i models.JiraIssue) []interface{} {
 		nullInt(i.DoneWeek), i.FixVersions,
 		i.FixVersionReleased, i.FixVersionReleaseDate, i.ReleaseWeek,
 		nullFloat(i.StoryPoint), nullStr(i.FromType), i.Parent,
-		nullFloat(i.CodingHours), nullFloat(i.CodeReviewHours),
-		nullFloat(i.TestingHours), nullFloat(i.HangingBugHours),
-		nullFloat(i.CodeReviewBugHours), nullFloat(i.FixingHours),
+		nullFloat(i.CodingHours), nullFloat(i.CodeReviewHours), nullFloat(i.CodeReviewDayWorkHours),
+		nullFloat(i.TestingHours), nullFloat(i.HangingBugHours), nullFloat(i.HangingBugDayWorkHours),
+		nullFloat(i.CodeReviewBugHours), nullFloat(i.CodeReviewBugDayWorkHours),
+		nullFloat(i.FixingHours),
 		nullFloat(i.RetestHours), nullInt(i.CountFixVersion),
 		nullStr(i.AdditionalTask), nullStr(i.AccidentBug),
 		nullStr(i.BugFromCategory), nullStr(i.PicLeadQA),
