@@ -51,7 +51,9 @@ var HEADERS = []interface{}{
 	"fixVersion.released", "fixVersion.releaseDate", "Release Week",
 	"Story Point", "From Type", "Parent", "Coding Hours",
 	"Code Review Hours", "Code Review Day Work Hours", "Testing Hours",
-	"Hanging Bug Hours", "Hanging Bug Day Work Hours",
+	"First Ready to Test Date", "First In QA Date",
+	"Hanging Bug By Eng Hours", "Hanging Bug By Eng Day Work Hours",
+	"Hanging Bug By QA Hours", "Hanging Bug By QA Day Work Hours",
 	"Code Review Bug Hours", "Code Review Bug Day Work Hours",
 	"Fixing Hours", "Retest Hours",
 	"Count Fix Version", "Additional Task", "Accident Bug",
@@ -173,10 +175,10 @@ func (c *Client) applyNumericFormats(sheetID int64, totalRows int) error {
 	intCols := []int64{
 		6,  // Done Week
 		10, // Release Week
-		24, // Count Fix Version
-		31, // Actual Task Done Week
-		32, // Actual Task Done Month
-		33, // Actual Task Done Year
+		28, // Count Fix Version  (+4 dari original)
+		35, // Actual Task Done Week
+		36, // Actual Task Done Month
+		37, // Actual Task Done Year
 	}
 	floatCols := []int64{
 		11, // Story Point
@@ -184,12 +186,16 @@ func (c *Client) applyNumericFormats(sheetID int64, totalRows int) error {
 		15, // Code Review Hours
 		16, // Code Review Day Work Hours
 		17, // Testing Hours
-		18, // Hanging Bug Hours
-		19, // Hanging Bug Day Work Hours
-		20, // Code Review Bug Hours
-		21, // Code Review Bug Day Work Hours
-		22, // Fixing Hours
-		23, // Retest Hours
+		// 18 = First Ready to Test Date (text)
+		// 19 = First In QA Date (text)
+		20, // Hanging Bug By Eng Hours
+		21, // Hanging Bug By Eng Day Work Hours
+		22, // Hanging Bug By QA Hours
+		23, // Hanging Bug By QA Day Work Hours
+		24, // Code Review Bug Hours
+		25, // Code Review Bug Day Work Hours
+		26, // Fixing Hours
+		27, // Retest Hours
 	}
 
 	makeRepeat := func(col int64, pattern string) *sheets.Request {
@@ -324,7 +330,9 @@ func issueToRow(i models.JiraIssue) []interface{} {
 		i.FixVersionReleased, i.FixVersionReleaseDate, i.ReleaseWeek,
 		nullFloat(i.StoryPoint), nullStr(i.FromType), i.Parent,
 		nullFloat(i.CodingHours), nullFloat(i.CodeReviewHours), nullFloat(i.CodeReviewDayWorkHours),
-		nullFloat(i.TestingHours), nullFloat(i.HangingBugHours), nullFloat(i.HangingBugDayWorkHours),
+		nullFloat(i.TestingHours), nullStr(i.FirstReadyToTestDate), nullStr(i.FirstInQADate),
+		nullFloat(i.HangingBugByEngHours), nullFloat(i.HangingBugByEngDayWorkHours),
+		nullFloat(i.HangingBugByQAHours), nullFloat(i.HangingBugByQADayWorkHours),
 		nullFloat(i.CodeReviewBugHours), nullFloat(i.CodeReviewBugDayWorkHours),
 		nullFloat(i.FixingHours),
 		nullFloat(i.RetestHours), nullInt(i.CountFixVersion),

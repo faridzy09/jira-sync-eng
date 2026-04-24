@@ -158,6 +158,7 @@ type IssueFields struct {
 	} `json:"fixVersions"`
 	StoryPoint              *float64 `json:"customfield_10024"`
 	StatusCategoryChangedAt string   `json:"statuscategorychangedate"`
+	CreatedAt               string   `json:"created"` // issue created date
 
 	// Custom fields
 	CustomField10156 *struct {
@@ -420,42 +421,46 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 	}
 
 	return models.JiraIssue{
-		Key:                       issue.Key,
-		IssueType:                 issueType,
-		Summary:                   fields.Summary,
-		Assignee:                  assignee,
-		PicLeadEngineer:           picEng,
-		StatusCategoryChanged:     statusCategoryChanged,
-		DoneWeek:                  doneWeekPtr,
-		FixVersions:               fixVersionsStr,
-		FixVersionReleased:        fixVersionReleased,
-		FixVersionReleaseDate:     fixVersionReleaseDate,
-		ReleaseWeek:               releaseWeek,
-		StoryPoint:                fields.StoryPoint,
-		FromType:                  fromType,
-		Parent:                    parentKey,
-		CodingHours:               nilIfNotTask(getHours("IN PROGRESS"), !isStory && !isEligibleBug),
-		CodeReviewHours:           nilIfNotTask(getHours("CODE REVIEW"), !isStory && !isEligibleBug),
-		CodeReviewDayWorkHours:    nilIfNotTask(getDayWorkHours("CODE REVIEW"), !isStory && !isEligibleBug),
-		TestingHours:              nilIfNotTask(getHours("IN QA"), !isStory),
-		HangingBugHours:           nil,
-		HangingBugDayWorkHours:    nil,
-		CodeReviewBugHours:        nilIfNotTask(getHours("CODE REVIEW"), isEligibleBug),
-		CodeReviewBugDayWorkHours: nilIfNotTask(getDayWorkHours("CODE REVIEW"), isEligibleBug),
-		FixingHours:               nilIfNotTask(getHours("IN PROGRESS"), isEligibleBug),
-		RetestHours:               nilIfNotTask(getHours("RETESTING"), !isStory && isBug),
-		CountFixVersion:           countFV,
-		AdditionalTask:            additionalTaskVal,
-		AccidentBug:               accidentBugVal,
-		BugFromCategory:           bugFromCategory,
-		PicLeadQA:                 picQA,
-		ActualTaskStartDate:       actualStartDate,
-		ActualTaskDoneDate:        doneDateAt,
-		ActualTaskDoneWeek:        taskDoneWeekStr,
-		ActualTaskDoneMonth:       taskDoneMonthStr,
-		ActualTaskDoneYear:        taskDoneYearStr,
-		TaskStatus:                taskStatus,
-		StatusStory:               statusStory,
+		Key:                         issue.Key,
+		IssueType:                   issueType,
+		Summary:                     fields.Summary,
+		Assignee:                    assignee,
+		PicLeadEngineer:             picEng,
+		StatusCategoryChanged:       statusCategoryChanged,
+		DoneWeek:                    doneWeekPtr,
+		FixVersions:                 fixVersionsStr,
+		FixVersionReleased:          fixVersionReleased,
+		FixVersionReleaseDate:       fixVersionReleaseDate,
+		ReleaseWeek:                 releaseWeek,
+		StoryPoint:                  fields.StoryPoint,
+		FromType:                    fromType,
+		Parent:                      parentKey,
+		CodingHours:                 nilIfNotTask(getHours("IN PROGRESS"), !isStory && !isEligibleBug),
+		CodeReviewHours:             nilIfNotTask(getHours("CODE REVIEW"), !isStory && !isEligibleBug),
+		CodeReviewDayWorkHours:      nilIfNotTask(getDayWorkHours("CODE REVIEW"), !isStory && !isEligibleBug),
+		TestingHours:                nilIfNotTask(getHours("IN QA"), !isStory),
+		HangingBugByEngHours:        nilIfNotTask(calcHangingBugHours(issue), isEligibleBug),
+		HangingBugByEngDayWorkHours: nilIfNotTask(calcHangingBugDayWorkHours(issue), isEligibleBug),
+		HangingBugByQAHours:         nilIfNotTask(calcHangingBugByQAHours(issue), isBug),
+		HangingBugByQADayWorkHours:  nilIfNotTask(calcHangingBugByQADayWorkHours(issue), isBug),
+		CodeReviewBugHours:          nilIfNotTask(getHours("CODE REVIEW"), isEligibleBug),
+		CodeReviewBugDayWorkHours:   nilIfNotTask(getDayWorkHours("CODE REVIEW"), isEligibleBug),
+		FixingHours:                 nilIfNotTask(getHours("IN PROGRESS"), isEligibleBug),
+		RetestHours:                 nilIfNotTask(getHours("RETESTING"), !isStory && isBug),
+		CountFixVersion:             countFV,
+		AdditionalTask:              additionalTaskVal,
+		AccidentBug:                 accidentBugVal,
+		BugFromCategory:             bugFromCategory,
+		PicLeadQA:                   picQA,
+		ActualTaskStartDate:         actualStartDate,
+		ActualTaskDoneDate:          doneDateAt,
+		ActualTaskDoneWeek:          taskDoneWeekStr,
+		ActualTaskDoneMonth:         taskDoneMonthStr,
+		ActualTaskDoneYear:          taskDoneYearStr,
+		TaskStatus:                  taskStatus,
+		StatusStory:                 statusStory,
+		FirstReadyToTestDate:        firstReadyToTest(issue),
+		FirstInQADate:               firstInQA(issue),
 	}
 }
 
@@ -602,6 +607,35 @@ func firstInProgress(issue *RawIssue) string {
 	for _, h := range issue.Changelog.Histories {
 		for _, item := range h.Items {
 			if item.Field == "status" && item.ToString == "In Progress" {
+				if t, err := parseJiraTime(h.Created); err == nil {
+					return t.Format("2006-01-02 15:04:05")
+				}
+			}
+		}
+	}
+	return "N/A"
+}
+
+// firstReadyToTest returns the timestamp of the first transition TO "Ready to Test".
+func firstReadyToTest(issue *RawIssue) string {
+	for _, h := range issue.Changelog.Histories {
+		for _, item := range h.Items {
+			if item.Field == "status" && item.ToString == "Ready to Test" {
+				if t, err := parseJiraTime(h.Created); err == nil {
+					return t.Format("2006-01-02 15:04:05")
+				}
+			}
+		}
+	}
+	return "N/A"
+}
+
+// firstInQA returns the timestamp of the first transition TO "In QA" / "In Testing".
+func firstInQA(issue *RawIssue) string {
+	for _, h := range issue.Changelog.Histories {
+		for _, item := range h.Items {
+			if item.Field == "status" &&
+				(item.ToString == "In QA" || item.ToString == "In Testing") {
 				if t, err := parseJiraTime(h.Created); err == nil {
 					return t.Format("2006-01-02 15:04:05")
 				}
@@ -834,6 +868,100 @@ func calcWorkHoursInInterval(from, to time.Time) float64 {
 		cursor = next
 	}
 	return round2(total)
+}
+
+// calcHangingBugByQAHours menghitung calendar hours dari first "Ready to Test" sampai first "In QA"/"In Testing".
+func calcHangingBugByQAHours(issue *RawIssue) *float64 {
+	readyStr := firstReadyToTest(issue)
+	if readyStr == "N/A" {
+		return nil
+	}
+	inQAStr := firstInQA(issue)
+	if inQAStr == "N/A" {
+		return nil
+	}
+	readyTime, err := time.Parse("2006-01-02 15:04:05", readyStr)
+	if err != nil {
+		return nil
+	}
+	inQATime, err := time.Parse("2006-01-02 15:04:05", inQAStr)
+	if err != nil {
+		return nil
+	}
+	if !inQATime.After(readyTime) {
+		return nil
+	}
+	hrs := round2(inQATime.Sub(readyTime).Hours())
+	return &hrs
+}
+
+// calcHangingBugByQADayWorkHours menghitung jam kerja efektif dari first "Ready to Test" sampai first "In QA"/"In Testing"
+// (Senin-Jumat, 09:00-18:00 WIB, exclude hari libur).
+func calcHangingBugByQADayWorkHours(issue *RawIssue) *float64 {
+	readyStr := firstReadyToTest(issue)
+	if readyStr == "N/A" {
+		return nil
+	}
+	inQAStr := firstInQA(issue)
+	if inQAStr == "N/A" {
+		return nil
+	}
+	readyTime, err := time.Parse("2006-01-02 15:04:05", readyStr)
+	if err != nil {
+		return nil
+	}
+	inQATime, err := time.Parse("2006-01-02 15:04:05", inQAStr)
+	if err != nil {
+		return nil
+	}
+	if !inQATime.After(readyTime) {
+		return nil
+	}
+	hrs := calcWorkHoursInInterval(readyTime, inQATime)
+	return &hrs
+}
+
+// calcHangingBugHours menghitung total jam dari created tiket sampai first in progress (calendar hours).
+func calcHangingBugHours(issue *RawIssue) *float64 {
+	if issue.Fields.CreatedAt == "" {
+		return nil
+	}
+	createdTime, err := parseJiraTime(issue.Fields.CreatedAt)
+	if err != nil {
+		return nil
+	}
+	inProgressStr := firstInProgress(issue)
+	if inProgressStr == "N/A" {
+		return nil
+	}
+	inProgressTime, err := time.Parse("2006-01-02 15:04:05", inProgressStr)
+	if err != nil {
+		return nil
+	}
+	hrs := round2(inProgressTime.Sub(createdTime).Hours())
+	return &hrs
+}
+
+// calcHangingBugDayWorkHours menghitung jam kerja efektif dari created tiket sampai first in progress
+// (Senin-Jumat, 09:00-18:00 WIB, exclude hari libur).
+func calcHangingBugDayWorkHours(issue *RawIssue) *float64 {
+	if issue.Fields.CreatedAt == "" {
+		return nil
+	}
+	createdTime, err := parseJiraTime(issue.Fields.CreatedAt)
+	if err != nil {
+		return nil
+	}
+	inProgressStr := firstInProgress(issue)
+	if inProgressStr == "N/A" {
+		return nil
+	}
+	inProgressTime, err := time.Parse("2006-01-02 15:04:05", inProgressStr)
+	if err != nil {
+		return nil
+	}
+	hrs := calcWorkHoursInInterval(createdTime, inProgressTime)
+	return &hrs
 }
 
 func nextWorkMorning(t time.Time, hour int) time.Time {

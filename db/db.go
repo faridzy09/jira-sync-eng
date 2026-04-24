@@ -53,8 +53,10 @@ func (r *Repository) CreateTableIfNotExists() error {
         code_review_hours        FLOAT,
 		code_review_day_work_hours FLOAT,
         testing_hours            FLOAT,
-        hanging_bug_hours        FLOAT,
-		hanging_bug_day_work_hours FLOAT,
+        hanging_bug_by_eng_hours        FLOAT,
+		hanging_bug_by_eng_day_work_hours FLOAT,
+        hanging_bug_by_qa_hours         FLOAT,
+        hanging_bug_by_qa_day_work_hours FLOAT,
         code_review_bug_hours    FLOAT,
 		code_review_bug_day_work_hours    FLOAT,
         fixing_hours             FLOAT,
@@ -71,6 +73,8 @@ func (r *Repository) CreateTableIfNotExists() error {
         actual_task_done_year    TEXT,
         task_status              TEXT,
         status_story             TEXT,
+        first_ready_to_test_date TEXT,
+        first_in_qa_date         TEXT,
         synced_at                TIMESTAMP DEFAULT NOW()
     );`
 	_, err := r.db.Exec(query)
@@ -92,7 +96,15 @@ func (r *Repository) CreateTableIfNotExists() error {
     END$$;
     ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS code_review_day_work_hours FLOAT;
     ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_day_work_hours FLOAT;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS code_review_bug_day_work_hours FLOAT;`
+    ALTER TABLE jira_issues RENAME COLUMN IF EXISTS hanging_bug_hours TO hanging_bug_by_eng_hours;
+    ALTER TABLE jira_issues RENAME COLUMN IF EXISTS hanging_bug_day_work_hours TO hanging_bug_by_eng_day_work_hours;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_by_eng_hours FLOAT;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_by_eng_day_work_hours FLOAT;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_by_qa_hours FLOAT;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_by_qa_day_work_hours FLOAT;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS code_review_bug_day_work_hours FLOAT;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS first_ready_to_test_date TEXT;
+    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS first_in_qa_date TEXT;`
 	_, err = r.db.Exec(alterQuery)
 	return err
 }
@@ -127,14 +139,15 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 		"fix_version_released", "fix_version_release_date", "release_week",
 		"story_point", "from_type", "parent", "coding_hours",
 		"code_review_hours", "code_review_day_work_hours",
-		"testing_hours", "hanging_bug_hours", "hanging_bug_day_work_hours",
+		"testing_hours", "hanging_bug_by_eng_hours", "hanging_bug_by_eng_day_work_hours",
+		"hanging_bug_by_qa_hours", "hanging_bug_by_qa_day_work_hours",
 		"code_review_bug_hours", "code_review_bug_day_work_hours",
 		"fixing_hours", "retest_hours",
 		"count_fix_version", "additional_task", "accident_bug",
 		"bug_from_category", "pic_lead_qa", "actual_task_start_date",
 		"actual_task_done_date", "actual_task_done_week",
 		"actual_task_done_month", "actual_task_done_year",
-		"task_status", "status_story", "synced_at",
+		"task_status", "status_story", "first_ready_to_test_date", "first_in_qa_date", "synced_at",
 	}
 
 	placeholders := []string{}
@@ -155,13 +168,15 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 			issue.FixVersions, issue.FixVersionReleased, issue.FixVersionReleaseDate,
 			issue.ReleaseWeek, issue.StoryPoint, issue.FromType, issue.Parent,
 			issue.CodingHours, issue.CodeReviewHours, issue.CodeReviewDayWorkHours,
-			issue.TestingHours, issue.HangingBugHours, issue.HangingBugDayWorkHours,
+			issue.TestingHours, issue.HangingBugByEngHours, issue.HangingBugByEngDayWorkHours,
+			issue.HangingBugByQAHours, issue.HangingBugByQADayWorkHours,
 			issue.CodeReviewBugHours, issue.CodeReviewBugDayWorkHours,
 			issue.FixingHours, issue.RetestHours, issue.CountFixVersion, issue.AdditionalTask,
 			issue.AccidentBug, issue.BugFromCategory, issue.PicLeadQA,
 			issue.ActualTaskStartDate, issue.ActualTaskDoneDate,
 			issue.ActualTaskDoneWeek, issue.ActualTaskDoneMonth,
 			issue.ActualTaskDoneYear, issue.TaskStatus, issue.StatusStory,
+			issue.FirstReadyToTestDate, issue.FirstInQADate,
 			time.Now(),
 		)
 	}
@@ -195,14 +210,15 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			fix_version_released, fix_version_release_date, release_week,
 			story_point, from_type, parent, coding_hours,
 			code_review_hours, code_review_day_work_hours,
-			testing_hours, hanging_bug_hours, hanging_bug_day_work_hours,
+			testing_hours, hanging_bug_by_eng_hours, hanging_bug_by_eng_day_work_hours,
+			hanging_bug_by_qa_hours, hanging_bug_by_qa_day_work_hours,
 			code_review_bug_hours, code_review_bug_day_work_hours,
 			fixing_hours, retest_hours,
 			count_fix_version, additional_task, accident_bug,
 			bug_from_category, pic_lead_qa, actual_task_start_date,
 			actual_task_done_date, actual_task_done_week,
 			actual_task_done_month, actual_task_done_year,
-			task_status, status_story, synced_at
+			task_status, status_story, first_ready_to_test_date, first_in_qa_date, synced_at
 		FROM jira_issues ORDER BY actual_task_done_week ASC`)
 	if err != nil {
 		return nil, err
@@ -218,13 +234,15 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			&issue.FixVersions, &issue.FixVersionReleased, &issue.FixVersionReleaseDate,
 			&issue.ReleaseWeek, &issue.StoryPoint, &issue.FromType, &issue.Parent,
 			&issue.CodingHours, &issue.CodeReviewHours, &issue.CodeReviewDayWorkHours,
-			&issue.TestingHours, &issue.HangingBugHours, &issue.HangingBugDayWorkHours,
+			&issue.TestingHours, &issue.HangingBugByEngHours, &issue.HangingBugByEngDayWorkHours,
+			&issue.HangingBugByQAHours, &issue.HangingBugByQADayWorkHours,
 			&issue.CodeReviewBugHours, &issue.CodeReviewBugDayWorkHours,
 			&issue.FixingHours, &issue.RetestHours, &issue.CountFixVersion, &issue.AdditionalTask,
 			&issue.AccidentBug, &issue.BugFromCategory, &issue.PicLeadQA,
 			&issue.ActualTaskStartDate, &issue.ActualTaskDoneDate,
 			&issue.ActualTaskDoneWeek, &issue.ActualTaskDoneMonth,
 			&issue.ActualTaskDoneYear, &issue.TaskStatus, &issue.StatusStory,
+			&issue.FirstReadyToTestDate, &issue.FirstInQADate,
 			&issue.SyncedAt,
 		)
 		if err != nil {
