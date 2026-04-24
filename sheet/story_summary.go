@@ -270,7 +270,86 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 		fmt.Printf("Story Summary written: %d/%d rows\n", end, len(rows))
 	}
 
+	// ── STEP 8: Terapkan number formatting ───────────────────
+	sheetID, err2 := c.getSheetID(sheetName)
+	if err2 != nil {
+		return err2
+	}
+	if err2 = c.applyStorySummaryNumericFormats(sheetID, len(rows)); err2 != nil {
+		return err2
+	}
+
 	fmt.Printf("SyncStorySummary done: %d stories\n", len(rows))
+	return nil
+}
+
+// applyStorySummaryNumericFormats applies number formatting to numeric columns in Story Summary sheet.
+// intCols   → #,##0      (Done Week, Release Week, Bug Count)
+// floatCols → #,##0.00   (SP cols, Hours cols, SLA cols)
+func (c *Client) applyStorySummaryNumericFormats(sheetID int64, totalRows int) error {
+	endRow := int64(totalRows) + 1
+
+	// Column indices (0-based) — must match SUMMARY_HEADERS order
+	intCols := []int64{
+		3,  // Done Week
+		20, // Bug Count
+	}
+	floatCols := []int64{
+		5,  // Total SP
+		6,  // SP QA
+		7,  // SP Eng
+		8,  // Coding Hours
+		9,  // Code Review Hours
+		10, // Code Review Day Work Hours
+		11, // Testing Hours
+		12, // Fixing Hours
+		13, // Code Review Bug Hours
+		14, // Code Review Bug Day Work Hours
+		15, // Retest Hours
+		16, // Total Hours
+		17, // Total Day Work Hours
+		18, // SLA (Hours/SP)
+		19, // SLA Day Work (Hours/SP)
+	}
+
+	makeRepeat := func(col int64, pattern string) *sheets.Request {
+		return &sheets.Request{
+			RepeatCell: &sheets.RepeatCellRequest{
+				Range: &sheets.GridRange{
+					SheetId:          sheetID,
+					StartRowIndex:    1,
+					EndRowIndex:      endRow,
+					StartColumnIndex: col,
+					EndColumnIndex:   col + 1,
+				},
+				Cell: &sheets.CellData{
+					UserEnteredFormat: &sheets.CellFormat{
+						NumberFormat: &sheets.NumberFormat{
+							Type:    "NUMBER",
+							Pattern: pattern,
+						},
+					},
+				},
+				Fields: "userEnteredFormat.numberFormat",
+			},
+		}
+	}
+
+	var requests []*sheets.Request
+	for _, col := range intCols {
+		requests = append(requests, makeRepeat(col, "#,##0"))
+	}
+	for _, col := range floatCols {
+		requests = append(requests, makeRepeat(col, "#,##0.00"))
+	}
+
+	_, err := c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Do()
+	if err != nil {
+		return fmt.Errorf("apply story summary numeric formats error: %w", err)
+	}
+	fmt.Println("Story Summary numeric formats applied")
 	return nil
 }
 

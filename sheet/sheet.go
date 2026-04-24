@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"jira-sync-eng/models"
 	"os"
+	"strconv"
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
@@ -148,6 +149,90 @@ func (c *Client) clearSheet(sheetName string, rowCount int) error {
 	return nil
 }
 
+// getSheetID returns the sheetId for the given sheet name.
+func (c *Client) getSheetID(sheetName string) (int64, error) {
+	ss, err := c.service.Spreadsheets.Get(c.spreadsheetID).Do()
+	if err != nil {
+		return 0, fmt.Errorf("get spreadsheet error: %w", err)
+	}
+	for _, s := range ss.Sheets {
+		if s.Properties.Title == sheetName {
+			return s.Properties.SheetId, nil
+		}
+	}
+	return 0, fmt.Errorf("sheet '%s' not found", sheetName)
+}
+
+// applyNumericFormats applies number formatting to numeric columns in the Jira sheet.
+// intCols  → #,##0       (Done Week, Release Week, Count Fix Version, Actual Task Done Week)
+// floatCols → #,##0.00   (Story Point, all Hours columns)
+func (c *Client) applyNumericFormats(sheetID int64, totalRows int) error {
+	endRow := int64(totalRows) + 1 // +1 to cover all data rows
+
+	// Column indices (0-based) — must match HEADERS order
+	intCols := []int64{
+		6,  // Done Week
+		10, // Release Week
+		24, // Count Fix Version
+		31, // Actual Task Done Week
+		32, // Actual Task Done Month
+		33, // Actual Task Done Year
+	}
+	floatCols := []int64{
+		11, // Story Point
+		14, // Coding Hours
+		15, // Code Review Hours
+		16, // Code Review Day Work Hours
+		17, // Testing Hours
+		18, // Hanging Bug Hours
+		19, // Hanging Bug Day Work Hours
+		20, // Code Review Bug Hours
+		21, // Code Review Bug Day Work Hours
+		22, // Fixing Hours
+		23, // Retest Hours
+	}
+
+	makeRepeat := func(col int64, pattern string) *sheets.Request {
+		return &sheets.Request{
+			RepeatCell: &sheets.RepeatCellRequest{
+				Range: &sheets.GridRange{
+					SheetId:          sheetID,
+					StartRowIndex:    1, // skip header row
+					EndRowIndex:      endRow,
+					StartColumnIndex: col,
+					EndColumnIndex:   col + 1,
+				},
+				Cell: &sheets.CellData{
+					UserEnteredFormat: &sheets.CellFormat{
+						NumberFormat: &sheets.NumberFormat{
+							Type:    "NUMBER",
+							Pattern: pattern,
+						},
+					},
+				},
+				Fields: "userEnteredFormat.numberFormat",
+			},
+		}
+	}
+
+	var requests []*sheets.Request
+	for _, col := range intCols {
+		requests = append(requests, makeRepeat(col, "#,##0"))
+	}
+	for _, col := range floatCols {
+		requests = append(requests, makeRepeat(col, "#,##0.00"))
+	}
+
+	_, err := c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Do()
+	if err != nil {
+		return fmt.Errorf("apply numeric formats error: %w", err)
+	}
+	fmt.Println("Numeric formats applied")
+	return nil
+}
+
 func (c *Client) SyncToSheet(sheetName string, issues []models.JiraIssue) error {
 	// 1. Hapus dan buat ulang sheet
 	if err := c.clearSheet(sheetName, len(issues)+1); err != nil {
@@ -195,6 +280,15 @@ func (c *Client) SyncToSheet(sheetName string, issues []models.JiraIssue) error 
 		fmt.Printf("Sheet written: %d/%d rows\n", end, len(issues))
 	}
 
+	// 4. Terapkan number formatting ke kolom numerik
+	sheetID, err := c.getSheetID(sheetName)
+	if err != nil {
+		return err
+	}
+	if err := c.applyNumericFormats(sheetID, len(issues)); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -237,7 +331,20 @@ func issueToRow(i models.JiraIssue) []interface{} {
 		nullStr(i.AdditionalTask), nullStr(i.AccidentBug),
 		nullStr(i.BugFromCategory), nullStr(i.PicLeadQA),
 		i.ActualTaskStartDate, i.ActualTaskDoneDate,
-		i.ActualTaskDoneWeek, i.ActualTaskDoneMonth, i.ActualTaskDoneYear,
+		strToInt(i.ActualTaskDoneWeek), strToInt(i.ActualTaskDoneMonth), strToInt(i.ActualTaskDoneYear),
 		i.TaskStatus, i.StatusStory,
 	}
+}
+
+// strToInt converts a string to int for sheet numeric cells.
+// Returns nil if the string is empty or not a valid integer.
+func strToInt(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return nil
+	}
+	return n
 }

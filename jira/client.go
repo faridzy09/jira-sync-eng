@@ -523,11 +523,21 @@ func getLatestFixVersion(fvs []fixVersion) *fixVersion {
 	return latest
 }
 
+// mondayOf returns the Monday (00:00:00 local) of the week containing t.
+func mondayOf(t time.Time) time.Time {
+	wd := int(t.Weekday())
+	if wd == 0 {
+		wd = 7 // Sunday → 7 so Monday=1 … Sunday=7
+	}
+	return time.Date(t.Year(), t.Month(), t.Day()-wd+1, 0, 0, 0, 0, t.Location())
+}
+
+// calculateWeek returns the week number (1-based, Mon–Sun) of dateStr
+// relative to the week that contains baseDate (that week = week 1).
 func calculateWeek(dateStr string, baseDate time.Time) int {
 	if dateStr == "" || dateStr == "N/A" {
 		return 0
 	}
-	// Coba beberapa format
 	formats := []string{
 		"2006-01-02 15:04:05",
 		"2006-01-02T15:04:05.000-0700",
@@ -547,7 +557,9 @@ func calculateWeek(dateStr string, baseDate time.Time) int {
 	if err != nil {
 		return 0
 	}
-	diff := d.Sub(baseDate)
+	baseMon := mondayOf(baseDate)
+	dMon := mondayOf(d)
+	diff := dMon.Sub(baseMon)
 	week := int(diff.Hours()/(7*24)) + 1
 	if week < 1 {
 		return 0
