@@ -107,13 +107,19 @@ func (c *Client) clearSheet(sheetName string, rowCount int) error {
 		return nil
 	}
 
-	var requests []*sheets.Request
-
-	// Expand baris jika kurang
 	neededRows := int64(rowCount) + 10
 	if neededRows < 1000 {
 		neededRows = 1000
 	}
+	// Gunakan max antara currentRows dan neededRows agar semua baris lama ikut ter-cover
+	totalRows := currentRows
+	if neededRows > totalRows {
+		totalRows = neededRows
+	}
+
+	var requests []*sheets.Request
+
+	// Expand baris jika kurang
 	if currentRows < neededRows {
 		requests = append(requests, &sheets.Request{
 			UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
@@ -129,11 +135,15 @@ func (c *Client) clearSheet(sheetName string, rowCount int) error {
 		})
 	}
 
-	// Clear semua konten + format sekaligus
+	// Clear format dengan bounds eksplisit (mencakup semua baris yang pernah ada)
 	requests = append(requests, &sheets.Request{
 		RepeatCell: &sheets.RepeatCellRequest{
 			Range: &sheets.GridRange{
-				SheetId: sheetID,
+				SheetId:          sheetID,
+				StartRowIndex:    0,
+				EndRowIndex:      totalRows,
+				StartColumnIndex: 0,
+				EndColumnIndex:   50,
 			},
 			Cell:   &sheets.CellData{},
 			Fields: "userEnteredValue,userEnteredFormat",
@@ -145,6 +155,13 @@ func (c *Client) clearSheet(sheetName string, rowCount int) error {
 	}).Do()
 	if err != nil {
 		return fmt.Errorf("clear sheet error: %w", err)
+	}
+
+	// Clear konten dengan Values API (lebih reliable untuk menghapus semua value)
+	clearRange := fmt.Sprintf("%s!A1:AX%d", sheetName, totalRows)
+	_, err = c.service.Spreadsheets.Values.Clear(c.spreadsheetID, clearRange, &sheets.ClearValuesRequest{}).Do()
+	if err != nil {
+		return fmt.Errorf("clear values error: %w", err)
 	}
 
 	fmt.Printf("Sheet '%s' cleared\n", sheetName)
