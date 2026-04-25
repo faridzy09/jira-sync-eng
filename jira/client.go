@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"jira-sync-eng/models"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -167,7 +168,7 @@ type IssueFields struct {
 	CustomField10492 *struct {
 		Value string `json:"value"`
 	} `json:"customfield_10492"` // Additional Task
-	CustomField11331 string `json:"customfield_11331"` // Bug parent key
+	CustomField11331 interface{} `json:"customfield_11331"` // Bug parent key (can be string or object)
 	CustomField11364 *struct {
 		Value string `json:"value"`
 	} `json:"customfield_11364"` // From Type
@@ -438,9 +439,9 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 		CodingHours:                 nilIfNotTask(getHours("IN PROGRESS"), !isStory && !isEligibleBug),
 		CodeReviewHours:             nilIfNotTask(getHours("CODE REVIEW"), !isStory && !isEligibleBug),
 		CodeReviewDayWorkHours:      nilIfNotTask(getDayWorkHours("CODE REVIEW"), !isStory && !isEligibleBug),
-		TestingHours:                nilIfNotTask(getHours("IN QA"), !isStory),
-		HangingBugByEngHours:        nilIfNotTask(calcHangingBugHours(issue), isEligibleBug),
-		HangingBugByEngDayWorkHours: nilIfNotTask(calcHangingBugDayWorkHours(issue), isEligibleBug),
+		TestingHours:                nilIfNotTask(getHours("IN QA"), !isStory && !isBug),
+		HangingBugByEngHours:        nilIfNotTask(calcHangingBugHours(issue), isBug),
+		HangingBugByEngDayWorkHours: nilIfNotTask(calcHangingBugDayWorkHours(issue), isBug),
 		HangingBugByQAHours:         nilIfNotTask(calcHangingBugByQAHours(issue), isBug),
 		HangingBugByQADayWorkHours:  nilIfNotTask(calcHangingBugByQADayWorkHours(issue), isBug),
 		CodeReviewBugHours:          nilIfNotTask(getHours("CODE REVIEW"), isEligibleBug),
@@ -459,8 +460,18 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 		ActualTaskDoneYear:          taskDoneYearStr,
 		TaskStatus:                  taskStatus,
 		StatusStory:                 statusStory,
-		FirstReadyToTestDate:        firstReadyToTest(issue),
-		FirstInQADate:               firstInQA(issue),
+		FirstReadyToTestBugDate: func() string {
+			if isBug {
+				return firstReadyToTest(issue)
+			}
+			return ""
+		}(),
+		FirstInQABugDate: func() string {
+			if isBug {
+				return firstInTesting(issue)
+			}
+			return ""
+		}(),
 	}
 }
 
@@ -471,8 +482,8 @@ func resolveParentKey(issue *RawIssue, isStory, isBug bool) string {
 		return issue.Key
 	}
 	if isBug {
-		if issue.Fields.CustomField11331 != "" {
-			return issue.Fields.CustomField11331
+		if s, ok := issue.Fields.CustomField11331.(string); ok && s != "" {
+			return s
 		}
 		if issue.Fields.Parent != nil {
 			return issue.Fields.Parent.Key
@@ -630,12 +641,12 @@ func firstReadyToTest(issue *RawIssue) string {
 	return "N/A"
 }
 
-// firstInQA returns the timestamp of the first transition TO "In QA" / "In Testing".
-func firstInQA(issue *RawIssue) string {
+// firstInTesting returns the timestamp of the first transition TO  "In Testing".
+func firstInTesting(issue *RawIssue) string {
 	for _, h := range issue.Changelog.Histories {
 		for _, item := range h.Items {
 			if item.Field == "status" &&
-				(item.ToString == "In QA" || item.ToString == "In Testing") {
+				(item.ToString == "In Testing" || strings.ToLower(item.ToString) == "retesting") {
 				if t, err := parseJiraTime(h.Created); err == nil {
 					return t.Format("2006-01-02 15:04:05")
 				}
@@ -876,15 +887,15 @@ func calcHangingBugByQAHours(issue *RawIssue) *float64 {
 	if readyStr == "N/A" {
 		return nil
 	}
-	inQAStr := firstInQA(issue)
+	inQAStr := firstInTesting(issue)
 	if inQAStr == "N/A" {
 		return nil
 	}
-	readyTime, err := time.Parse("2006-01-02 15:04:05", readyStr)
+	readyTime, err := time.ParseInLocation("2006-01-02 15:04:05", readyStr, wib)
 	if err != nil {
 		return nil
 	}
-	inQATime, err := time.Parse("2006-01-02 15:04:05", inQAStr)
+	inQATime, err := time.ParseInLocation("2006-01-02 15:04:05", inQAStr, wib)
 	if err != nil {
 		return nil
 	}
@@ -902,15 +913,15 @@ func calcHangingBugByQADayWorkHours(issue *RawIssue) *float64 {
 	if readyStr == "N/A" {
 		return nil
 	}
-	inQAStr := firstInQA(issue)
+	inQAStr := firstInTesting(issue)
 	if inQAStr == "N/A" {
 		return nil
 	}
-	readyTime, err := time.Parse("2006-01-02 15:04:05", readyStr)
+	readyTime, err := time.ParseInLocation("2006-01-02 15:04:05", readyStr, wib)
 	if err != nil {
 		return nil
 	}
-	inQATime, err := time.Parse("2006-01-02 15:04:05", inQAStr)
+	inQATime, err := time.ParseInLocation("2006-01-02 15:04:05", inQAStr, wib)
 	if err != nil {
 		return nil
 	}
@@ -928,16 +939,19 @@ func calcHangingBugHours(issue *RawIssue) *float64 {
 	}
 	createdTime, err := parseJiraTime(issue.Fields.CreatedAt)
 	if err != nil {
+		log.Printf("Error parsing created time: %v", err)
 		return nil
 	}
 	inProgressStr := firstInProgress(issue)
 	if inProgressStr == "N/A" {
 		return nil
 	}
-	inProgressTime, err := time.Parse("2006-01-02 15:04:05", inProgressStr)
+	inProgressTime, err := time.ParseInLocation("2006-01-02 15:04:05", inProgressStr, wib)
 	if err != nil {
+		log.Printf("Error parsing in progress time: %v", err)
 		return nil
 	}
+
 	hrs := round2(inProgressTime.Sub(createdTime).Hours())
 	return &hrs
 }
@@ -956,7 +970,7 @@ func calcHangingBugDayWorkHours(issue *RawIssue) *float64 {
 	if inProgressStr == "N/A" {
 		return nil
 	}
-	inProgressTime, err := time.Parse("2006-01-02 15:04:05", inProgressStr)
+	inProgressTime, err := time.ParseInLocation("2006-01-02 15:04:05", inProgressStr, wib)
 	if err != nil {
 		return nil
 	}

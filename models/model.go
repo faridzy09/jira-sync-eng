@@ -41,7 +41,7 @@ type JiraIssue struct {
 	ActualTaskDoneYear          string     `json:"actual_task_done_year" db:"actual_task_done_year"`
 	TaskStatus                  string     `json:"task_status" db:"task_status"`
 	StatusStory                 string     `json:"status_story" db:"status_story"`
-	FirstReadyToTestDate        string     `json:"first_ready_to_test_date" db:"first_ready_to_test_date"`
-	FirstInQADate               string     `json:"first_in_qa_date" db:"first_in_qa_date"`
+	FirstReadyToTestBugDate     string     `json:"first_ready_to_test_bug_date" db:"first_ready_to_test_bug_date"`
+	FirstInQABugDate            string     `json:"first_in_qa_bug_date" db:"first_in_qa_bug_date"`
 	SyncedAt                    time.Time  `json:"synced_at" db:"synced_at"`
 }

@@ -73,8 +73,8 @@ func (r *Repository) CreateTableIfNotExists() error {
         actual_task_done_year    TEXT,
         task_status              TEXT,
         status_story             TEXT,
-        first_ready_to_test_date TEXT,
-        first_in_qa_date         TEXT,
+        first_ready_to_test_bug_date TEXT,
+        first_in_qa_bug_date         TEXT,
         synced_at                TIMESTAMP DEFAULT NOW()
     );`
 	_, err := r.db.Exec(query)
@@ -82,31 +82,7 @@ func (r *Repository) CreateTableIfNotExists() error {
 		return err
 	}
 
-	// Migrate existing table: ubah semua VARCHAR ke TEXT
-	alterQuery := `
-    DO $$
-    BEGIN
-        ALTER TABLE jira_issues ALTER COLUMN key TYPE TEXT;
-        ALTER TABLE jira_issues ALTER COLUMN issue_type TYPE TEXT;
-        ALTER TABLE jira_issues ALTER COLUMN assignee TYPE TEXT;
-        ALTER TABLE jira_issues ALTER COLUMN pic_lead_engineer TYPE TEXT;
-        ALTER TABLE jira_issues ALTER COLUMN pic_lead_qa TYPE TEXT;
-    EXCEPTION WHEN others THEN
-        -- ignore if already TEXT
-    END$$;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS code_review_day_work_hours FLOAT;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_day_work_hours FLOAT;
-    ALTER TABLE jira_issues RENAME COLUMN IF EXISTS hanging_bug_hours TO hanging_bug_by_eng_hours;
-    ALTER TABLE jira_issues RENAME COLUMN IF EXISTS hanging_bug_day_work_hours TO hanging_bug_by_eng_day_work_hours;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_by_eng_hours FLOAT;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_by_eng_day_work_hours FLOAT;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_by_qa_hours FLOAT;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS hanging_bug_by_qa_day_work_hours FLOAT;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS code_review_bug_day_work_hours FLOAT;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS first_ready_to_test_date TEXT;
-    ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS first_in_qa_date TEXT;`
-	_, err = r.db.Exec(alterQuery)
-	return err
+	return nil
 }
 
 // UpsertBatch: insert or update dalam batch 500
@@ -147,7 +123,7 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 		"bug_from_category", "pic_lead_qa", "actual_task_start_date",
 		"actual_task_done_date", "actual_task_done_week",
 		"actual_task_done_month", "actual_task_done_year",
-		"task_status", "status_story", "first_ready_to_test_date", "first_in_qa_date", "synced_at",
+		"task_status", "status_story", "first_ready_to_test_bug_date", "first_in_qa_bug_date", "synced_at",
 	}
 
 	placeholders := []string{}
@@ -176,7 +152,7 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 			issue.ActualTaskStartDate, issue.ActualTaskDoneDate,
 			issue.ActualTaskDoneWeek, issue.ActualTaskDoneMonth,
 			issue.ActualTaskDoneYear, issue.TaskStatus, issue.StatusStory,
-			issue.FirstReadyToTestDate, issue.FirstInQADate,
+			issue.FirstReadyToTestBugDate, issue.FirstInQABugDate,
 			time.Now(),
 		)
 	}
@@ -218,7 +194,7 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			bug_from_category, pic_lead_qa, actual_task_start_date,
 			actual_task_done_date, actual_task_done_week,
 			actual_task_done_month, actual_task_done_year,
-			task_status, status_story, first_ready_to_test_date, first_in_qa_date, synced_at
+			task_status, status_story, first_ready_to_test_bug_date, first_in_qa_bug_date, synced_at
 		FROM jira_issues ORDER BY actual_task_done_week ASC`)
 	if err != nil {
 		return nil, err
@@ -242,7 +218,7 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			&issue.ActualTaskStartDate, &issue.ActualTaskDoneDate,
 			&issue.ActualTaskDoneWeek, &issue.ActualTaskDoneMonth,
 			&issue.ActualTaskDoneYear, &issue.TaskStatus, &issue.StatusStory,
-			&issue.FirstReadyToTestDate, &issue.FirstInQADate,
+			&issue.FirstReadyToTestBugDate, &issue.FirstInQABugDate,
 			&issue.SyncedAt,
 		)
 		if err != nil {
