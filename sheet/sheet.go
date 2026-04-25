@@ -175,9 +175,9 @@ func (c *Client) applyNumericFormats(sheetID int64, totalRows int) error {
 	intCols := []int64{
 		6,  // Done Week
 		10, // Release Week
-		28, // Count Fix Version  (+4 dari original)
+		28, // Count Fix Version
 		35, // Actual Task Done Week
-		36, // Actual Task Done Month
+		// 36 = Actual Task Done Month (text, skip)
 		37, // Actual Task Done Year
 	}
 	floatCols := []int64{
@@ -339,7 +339,7 @@ func issueToRow(i models.JiraIssue) []interface{} {
 		nullStr(i.AdditionalTask), nullStr(i.AccidentBug),
 		nullStr(i.BugFromCategory), nullStr(i.PicLeadQA),
 		i.ActualTaskStartDate, i.ActualTaskDoneDate,
-		strToInt(i.ActualTaskDoneWeek), strToInt(i.ActualTaskDoneMonth), strToInt(i.ActualTaskDoneYear),
+		strToInt(i.ActualTaskDoneWeek), nullStr(i.ActualTaskDoneMonth), strToInt(i.ActualTaskDoneYear),
 		i.TaskStatus, i.StatusStory,
 	}
 }

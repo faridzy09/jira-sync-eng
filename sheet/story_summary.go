@@ -11,30 +11,34 @@ import (
 )
 
 var SUMMARY_HEADERS = []interface{}{
-	"Key",                            // 0
-	"PIC Lead Engineer",              // 1
-	"PIC Lead QA",                    // 2
-	"Done Week",                      // 3
-	"Release Week",                   // 4
-	"Total SP",                       // 5
-	"SP QA",                          // 6
-	"SP Eng",                         // 7
-	"Coding Hours",                   // 8
-	"Code Review Hours",              // 9
-	"Code Review Day Work Hours",     // 10
-	"Testing Hours",                  // 11
-	"Fixing Hours",                   // 12
-	"Code Review Bug Hours",          // 13
-	"Code Review Bug Day Work Hours", // 14
-	"Retest Hours",                   // 15
-	"Total Hours",                    // 16
-	"Total Day Work Hours",           // 17
-	"SLA (Hours/SP)",                 // 18
-	"SLA Day Work (Hours/SP)",        // 19
-	"Bug Count",                      // 20
-	"Fix Versions",                   // 21
-	"Has FE",                         // 22
-	"Status Story",                   // 23
+	"Key",                               // 0
+	"PIC Lead Engineer",                 // 1
+	"PIC Lead QA",                       // 2
+	"Done Week",                         // 3
+	"Release Week",                      // 4
+	"Total SP",                          // 5
+	"SP QA",                             // 6
+	"SP Eng",                            // 7
+	"Coding Hours",                      // 8
+	"Code Review Hours",                 // 9
+	"Code Review Day Work Hours",        // 10
+	"Testing Hours",                     // 11
+	"Fixing Hours",                      // 12
+	"Code Review Bug Hours",             // 13
+	"Code Review Bug Day Work Hours",    // 14
+	"Hanging Bug By Eng Hours",          // 15
+	"Hanging Bug By Eng Day Work Hours", // 16
+	"Hanging Bug By QA Hours",           // 17
+	"Hanging Bug By QA Day Work Hours",  // 18
+	"Retest Hours",                      // 19
+	"Total Hours",                       // 20
+	"Total Day Work Hours",              // 21
+	"SLA (Hours/SP)",                    // 22
+	"SLA Day Work (Hours/SP)",           // 23
+	"Bug Count",                         // 24
+	"Fix Versions",                      // 25
+	"Has FE",                            // 26
+	"Status Story",                      // 27
 }
 
 var keyFilters = []string{"IM", "CPB", "WB"}
@@ -50,19 +54,23 @@ type storyBase struct {
 }
 
 type storyAgg struct {
-	SP           float64
-	SPQA         float64
-	SPEng        float64
-	Coding       float64
-	CodeReview   float64
-	CodeReviewDW float64 // day work hours
-	Testing      float64
-	Fixing       float64
-	CodeRevBug   float64
-	CodeRevBugDW float64 // day work hours
-	Retest       float64
-	BugCount     int
-	HasFE        bool
+	SP              float64
+	SPQA            float64
+	SPEng           float64
+	Coding          float64
+	CodeReview      float64
+	CodeReviewDW    float64 // day work hours
+	Testing         float64
+	Fixing          float64
+	CodeRevBug      float64
+	CodeRevBugDW    float64 // day work hours
+	HangingEngHours float64
+	HangingEngDW    float64
+	HangingQAHours  float64
+	HangingQADW     float64
+	Retest          float64
+	BugCount        int
+	HasFE           bool
 }
 
 func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) error {
@@ -95,11 +103,13 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 	}
 
 	// ── STEP 2: Aggregate child issues ───────────────────────
+	skippedParents := map[string]int{}
 	for _, issue := range issues {
 		if issue.IssueType == "Story" {
 			continue
 		}
 		if _, ok := storyBaseMap[issue.Parent]; !ok {
+			skippedParents[issue.Parent]++
 			continue
 		}
 		if aggMap[issue.Parent] == nil {
@@ -135,6 +145,18 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 		}
 		if issue.CodeReviewBugDayWorkHours != nil {
 			a.CodeRevBugDW += *issue.CodeReviewBugDayWorkHours
+		}
+		if issue.HangingBugByEngHours != nil {
+			a.HangingEngHours += *issue.HangingBugByEngHours
+		}
+		if issue.HangingBugByEngDayWorkHours != nil {
+			a.HangingEngDW += *issue.HangingBugByEngDayWorkHours
+		}
+		if issue.HangingBugByQAHours != nil {
+			a.HangingQAHours += *issue.HangingBugByQAHours
+		}
+		if issue.HangingBugByQADayWorkHours != nil {
+			a.HangingQADW += *issue.HangingBugByQADayWorkHours
 		}
 
 		if issue.CodeReviewHours != nil {
@@ -194,6 +216,18 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 	}
 
 	// ── STEP 3: Sort by doneWeek ASC ─────────────────────────
+	if len(skippedParents) > 0 {
+		fmt.Printf("[WARN] %d child issues skipped (parent story not found):\n", func() int {
+			n := 0
+			for _, c := range skippedParents {
+				n += c
+			}
+			return n
+		}())
+		for parent, count := range skippedParents {
+			fmt.Printf("  parent=%q  skipped_children=%d\n", parent, count)
+		}
+	}
 	sort.SliceStable(storyOrder, func(i, j int) bool {
 		return parseDoneWeek(storyBaseMap[storyOrder[i]].DoneWeek) <
 			parseDoneWeek(storyBaseMap[storyOrder[j]].DoneWeek)
@@ -224,7 +258,10 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 			round2(a.SP), round2(a.SPQA), round2(a.SPEng),
 			round2(a.Coding), round2(a.CodeReview), round2(a.CodeReviewDW),
 			round2(a.Testing), round2(a.Fixing),
-			round2(a.CodeRevBug), round2(a.CodeRevBugDW), round2(a.Retest),
+			round2(a.CodeRevBug), round2(a.CodeRevBugDW),
+			round2(a.HangingEngHours), round2(a.HangingEngDW),
+			round2(a.HangingQAHours), round2(a.HangingQADW),
+			round2(a.Retest),
 			round2(totalHours), round2(totalDWHours), sla, slaDW,
 			a.BugCount, base.FixVersions, hasFE, base.Status,
 		})
@@ -292,7 +329,7 @@ func (c *Client) applyStorySummaryNumericFormats(sheetID int64, totalRows int) e
 	// Column indices (0-based) — must match SUMMARY_HEADERS order
 	intCols := []int64{
 		3,  // Done Week
-		20, // Bug Count
+		24, // Bug Count
 	}
 	floatCols := []int64{
 		5,  // Total SP
@@ -305,11 +342,15 @@ func (c *Client) applyStorySummaryNumericFormats(sheetID int64, totalRows int) e
 		12, // Fixing Hours
 		13, // Code Review Bug Hours
 		14, // Code Review Bug Day Work Hours
-		15, // Retest Hours
-		16, // Total Hours
-		17, // Total Day Work Hours
-		18, // SLA (Hours/SP)
-		19, // SLA Day Work (Hours/SP)
+		15, // Hanging Bug By Eng Hours
+		16, // Hanging Bug By Eng Day Work Hours
+		17, // Hanging Bug By QA Hours
+		18, // Hanging Bug By QA Day Work Hours
+		19, // Retest Hours
+		20, // Total Hours
+		21, // Total Day Work Hours
+		22, // SLA (Hours/SP)
+		23, // SLA Day Work (Hours/SP)
 	}
 
 	makeRepeat := func(col int64, pattern string) *sheets.Request {
