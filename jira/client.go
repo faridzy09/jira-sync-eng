@@ -646,7 +646,7 @@ func firstInTesting(issue *RawIssue) string {
 	for _, h := range issue.Changelog.Histories {
 		for _, item := range h.Items {
 			if item.Field == "status" &&
-				(item.ToString == "In Testing" || strings.ToLower(item.ToString) == "retesting") {
+				(strings.ToLower(item.ToString) == "in testing" || strings.ToLower(item.ToString) == "retesting" || strings.ToLower(item.ToString) == "in qa") {
 				if t, err := parseJiraTime(h.Created); err == nil {
 					return t.Format("2006-01-02 15:04:05")
 				}
