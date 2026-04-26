@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"google.golang.org/api/sheets/v4"
 )
@@ -73,7 +74,7 @@ type storyAgg struct {
 	HasFE           bool
 }
 
-func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) error {
+func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, baseDate time.Time) error {
 	// ── STEP 1: Collect stories ───────────────────────────────
 	var storyOrder []string
 	storyBaseMap := map[string]*storyBase{}
@@ -111,6 +112,21 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue) e
 		if _, ok := storyBaseMap[issue.Parent]; !ok {
 			skippedParents[issue.Parent]++
 			continue
+		}
+
+		// Only include child tasks done on or after baseDate
+		if issue.ActualTaskDoneDate != "" {
+			var doneDate time.Time
+			var parseErr error
+			for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02T15:04:05Z07:00", "2006-01-02"} {
+				doneDate, parseErr = time.Parse(layout, issue.ActualTaskDoneDate)
+				if parseErr == nil {
+					break
+				}
+			}
+			if parseErr == nil && doneDate.Before(baseDate) {
+				continue
+			}
 		}
 		if aggMap[issue.Parent] == nil {
 			aggMap[issue.Parent] = &storyAgg{}

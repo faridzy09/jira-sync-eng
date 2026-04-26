@@ -100,7 +100,7 @@ func main() {
 		if err != nil {
 			log.Fatal("Sheets client error:", err)
 		}
-		if err := sheetClient.SyncStorySummary("Story Summary", allIssues); err != nil {
+		if err := sheetClient.SyncStorySummary("Story Summary", allIssues, cfg.GetDoneWeekBaseDate()); err != nil {
 			log.Fatal("Story Summary sync error:", err)
 		}
 
