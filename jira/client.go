@@ -573,7 +573,9 @@ func calculateWeek(dateStr string, baseDate time.Time) int {
 	if err != nil {
 		return 0
 	}
-	baseMon := mondayOf(baseDate)
+	// Normalize ke WIB agar timezone-nya konsisten dengan baseDate
+	d = d.In(wib)
+	baseMon := mondayOf(baseDate.In(wib))
 	dMon := mondayOf(d)
 	diff := dMon.Sub(baseMon)
 	week := int(diff.Hours()/(7*24)) + 1
@@ -600,7 +602,19 @@ func parseJiraTime(s string) (time.Time, error) {
 
 func doneTask(issue *RawIssue) string {
 	histories := issue.Changelog.Histories
-	// Cari yang terakhir dengan status = "Done" (reverse)
+
+	// Prioritas 1: cari first transition ke "Ready to Test"
+	for _, h := range histories {
+		for _, item := range h.Items {
+			if item.Field == "status" && item.ToString == "Ready to Test" {
+				if t, err := parseJiraTime(h.Created); err == nil {
+					return t.Format("2006-01-02 15:04:05")
+				}
+			}
+		}
+	}
+
+	// Prioritas 2: cari last transition ke "Done"
 	for i := len(histories) - 1; i >= 0; i-- {
 		h := histories[i]
 		for _, item := range h.Items {
@@ -611,6 +625,7 @@ func doneTask(issue *RawIssue) string {
 			}
 		}
 	}
+
 	return "N/A"
 }
 
