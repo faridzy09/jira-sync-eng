@@ -554,23 +554,37 @@ func calculateWeek(dateStr string, baseDate time.Time) int {
 	if dateStr == "" || dateStr == "N/A" {
 		return 0
 	}
-	formats := []string{
-		"2006-01-02 15:04:05",
+	// Formats with timezone info → time.Parse (tz preserved)
+	tzFormats := []string{
 		"2006-01-02T15:04:05.000-0700",
 		"2006-01-02T15:04:05-0700",
 		time.RFC3339Nano,
 		time.RFC3339,
+	}
+	// Formats WITHOUT timezone info → parse as WIB directly
+	localFormats := []string{
+		"2006-01-02 15:04:05",
 		"2006-01-02",
 	}
 	var d time.Time
-	var err error
-	for _, f := range formats {
-		d, err = time.Parse(f, dateStr)
-		if err == nil {
+	var parsed bool
+	for _, f := range tzFormats {
+		if t, err := time.Parse(f, dateStr); err == nil {
+			d = t
+			parsed = true
 			break
 		}
 	}
-	if err != nil {
+	if !parsed {
+		for _, f := range localFormats {
+			if t, err := time.ParseInLocation(f, dateStr, wib); err == nil {
+				d = t
+				parsed = true
+				break
+			}
+		}
+	}
+	if !parsed {
 		return 0
 	}
 	// Normalize ke WIB agar timezone-nya konsisten dengan baseDate
@@ -600,27 +614,68 @@ func parseJiraTime(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("cannot parse %q", s)
 }
 
+// qaAssignees adalah daftar assignee yang done date-nya diambil dari status "Done" (bukan "Ready to Test").
+var qaAssignees = map[string]bool{
+	"Agnes Silalahi":        true,
+	"Annisa Imana":          true,
+	"arif triwidiatmoko":    true,
+	"azarine.rizcky":        true,
+	"Chintia Febi Ariani":   true,
+	"Destry Hutagaol":       true,
+	"DIAN AYU Lestari":      true,
+	"Dini Auliya":           true,
+	"herliana":              true,
+	"indah.tiastuti":        true,
+	"Mokhamad Aulia":        true,
+	"Muhamad Sobirin Jamil": true,
+	"Muhammad Alif":         true,
+	"Nurul Huda":            true,
+	"Ramadhani Adiwangsa":   true,
+	"Shabrina":              true,
+	"via.sugiharto":         true,
+	"Zulham Arifin":         true,
+	"Ferdyan Cahya":         true,
+}
+
 func doneTask(issue *RawIssue) string {
 	histories := issue.Changelog.Histories
 
-	// Prioritas 1: cari first transition ke "Ready to Test"
-	for _, h := range histories {
-		for _, item := range h.Items {
-			if item.Field == "status" && item.ToString == "Ready to Test" {
-				if t, err := parseJiraTime(h.Created); err == nil {
-					return t.Format("2006-01-02 15:04:05")
+	assignee := "Unassigned"
+	if issue.Fields.Assignee != nil {
+		assignee = issue.Fields.Assignee.DisplayName
+	}
+
+	if qaAssignees[assignee] && (strings.Contains(issue.Key, "CPB") || strings.Contains(issue.Key, "IM")) {
+		// Assignee QA/tertentu: prioritaskan status "Done" (last transition)
+		for i := len(histories) - 1; i >= 0; i-- {
+			h := histories[i]
+			for _, item := range h.Items {
+				if item.Field == "status" && item.ToString == "Done" {
+					if t, err := parseJiraTime(h.Created); err == nil {
+						return t.Format("2006-01-02 15:04:05")
+					}
 				}
 			}
 		}
-	}
-
-	// Prioritas 2: cari last transition ke "Done"
-	for i := len(histories) - 1; i >= 0; i-- {
-		h := histories[i]
-		for _, item := range h.Items {
-			if item.Field == "status" && item.ToString == "Done" {
-				if t, err := parseJiraTime(h.Created); err == nil {
-					return t.Format("2006-01-02 15:04:05")
+	} else {
+		// Assignee engineer: prioritaskan first "Ready to Test"
+		for _, h := range histories {
+			for _, item := range h.Items {
+				if item.Field == "status" && item.ToString == "Ready to Test" {
+					if t, err := parseJiraTime(h.Created); err == nil {
+						return t.Format("2006-01-02 15:04:05")
+					}
+				}
+			}
+		}
+		// Fallback: last "Done"
+		for i := len(histories) - 1; i >= 0; i-- {
+			h := histories[i]
+			for _, item := range h.Items {
+				if item.Field == "status" && item.ToString == "Done" {
+					if t, err := parseJiraTime(h.Created); err == nil {
+						return t.Format("2006-01-02 15:04:05")
+					}
 				}
 			}
 		}
