@@ -297,9 +297,10 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 	if fields.CustomField10492 != nil {
 		additionalTaskVal = fields.CustomField10492.Value
 	}
-	isEligibleBug := (isBug && bugTypes[accidentBugVal]) ||
-		validSources[additionalTaskVal]
 
+	isRework := !isBug && validSources[additionalTaskVal]
+	isEligibleBug := (isBug && bugTypes[accidentBugVal]) ||
+		isRework
 	// ── Hours map (dari changelog) ───────────────────────────
 	hoursMap := map[string]float64{}
 	dayWorkHoursMap := map[string]float64{}
@@ -421,6 +422,8 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 		taskDoneYearStr = fmt.Sprintf("%d", taskDoneYear)
 	}
 
+	isTask := (issueType == "Task" || issueType == "Sub-task" || issueType == "Sub-task Engineer" || issueType == "Sub-task QA") && !isRework
+
 	return models.JiraIssue{
 		Key:                         issue.Key,
 		IssueType:                   issueType,
@@ -436,9 +439,9 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 		StoryPoint:                  fields.StoryPoint,
 		FromType:                    fromType,
 		Parent:                      parentKey,
-		CodingHours:                 nilIfNotTask(getHours("IN PROGRESS"), !isStory && !isEligibleBug),
-		CodeReviewHours:             nilIfNotTask(getHours("CODE REVIEW"), !isStory && !isEligibleBug),
-		CodeReviewDayWorkHours:      nilIfNotTask(getDayWorkHours("CODE REVIEW"), !isStory && !isEligibleBug),
+		CodingHours:                 nilIfNotTask(getHours("IN PROGRESS"), isTask),
+		CodeReviewHours:             nilIfNotTask(getHours("CODE REVIEW"), isTask),
+		CodeReviewDayWorkHours:      nilIfNotTask(getDayWorkHours("CODE REVIEW"), isTask),
 		TestingHours:                nilIfNotTask(getHours("IN QA"), !isStory && !isBug),
 		HangingBugByEngHours:        nilIfNotTask(calcHangingBugHours(issue), isBug),
 		HangingBugByEngDayWorkHours: nilIfNotTask(calcHangingBugDayWorkHours(issue), isBug),
