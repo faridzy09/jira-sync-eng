@@ -61,6 +61,29 @@ type jiraIssueRaw struct {
 	} `json:"changelog"`
 }
 
+// qaAssignees adalah daftar assignee yang done date-nya diambil dari status "Done" (bukan "Ready to Test").
+var qaAssignees = map[string]bool{
+	"Agnes Silalahi":        true,
+	"Annisa Imana":          true,
+	"arif triwidiatmoko":    true,
+	"azarine.rizcky":        true,
+	"Chintia Febi Ariani":   true,
+	"Destry Hutagaol":       true,
+	"DIAN AYU Lestari":      true,
+	"Dini Auliya":           true,
+	"herliana":              true,
+	"indah.tiastuti":        true,
+	"Mokhamad Aulia":        true,
+	"Muhamad Sobirin Jamil": true,
+	"Muhammad Alif":         true,
+	"Nurul Huda":            true,
+	"Ramadhani Adiwangsa":   true,
+	"Shabrina":              true,
+	"via.sugiharto":         true,
+	"Zulham Arifin":         true,
+	"Ferdyan Cahya":         true,
+}
+
 func (c *Client) FetchAllIssues() ([]jiraIssueRaw, error) {
 	var allIssues []jiraIssueRaw
 	var nextPageToken string
@@ -283,7 +306,12 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 
 	// ── Actual task dates ────────────────────────────────────
 	doneDateAt := doneTask(issue)
-	actualStartDate := firstInProgress(issue)
+	actualStartDate := firstInProgress(issue, "In Progress")
+	if qaAssignees[fields.Assignee.DisplayName] || issueType == "Sub-task QA" {
+		// Jika assignee adalah QA, gunakan "In QA" dari status
+		actualStartDate = firstInProgress(issue, "In QA")
+	}
+
 	taskDoneWeekNum := calculateWeek(doneDateAt, baseDate)
 	taskDoneMonth := getMonthName(doneDateAt)
 	taskDoneYear := getYear(doneDateAt)
@@ -617,29 +645,6 @@ func parseJiraTime(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("cannot parse %q", s)
 }
 
-// qaAssignees adalah daftar assignee yang done date-nya diambil dari status "Done" (bukan "Ready to Test").
-var qaAssignees = map[string]bool{
-	"Agnes Silalahi":        true,
-	"Annisa Imana":          true,
-	"arif triwidiatmoko":    true,
-	"azarine.rizcky":        true,
-	"Chintia Febi Ariani":   true,
-	"Destry Hutagaol":       true,
-	"DIAN AYU Lestari":      true,
-	"Dini Auliya":           true,
-	"herliana":              true,
-	"indah.tiastuti":        true,
-	"Mokhamad Aulia":        true,
-	"Muhamad Sobirin Jamil": true,
-	"Muhammad Alif":         true,
-	"Nurul Huda":            true,
-	"Ramadhani Adiwangsa":   true,
-	"Shabrina":              true,
-	"via.sugiharto":         true,
-	"Zulham Arifin":         true,
-	"Ferdyan Cahya":         true,
-}
-
 func doneTask(issue *RawIssue) string {
 	histories := issue.Changelog.Histories
 
@@ -687,10 +692,10 @@ func doneTask(issue *RawIssue) string {
 	return "N/A"
 }
 
-func firstInProgress(issue *RawIssue) string {
+func firstInProgress(issue *RawIssue, status string) string {
 	for _, h := range issue.Changelog.Histories {
 		for _, item := range h.Items {
-			if item.Field == "status" && item.ToString == "In Progress" {
+			if item.Field == "status" && strings.ToLower(item.ToString) == status {
 				if t, err := parseJiraTime(h.Created); err == nil {
 					return t.Format("2006-01-02 15:04:05")
 				}
@@ -1015,7 +1020,7 @@ func calcHangingBugHours(issue *RawIssue) *float64 {
 		log.Printf("Error parsing created time: %v", err)
 		return nil
 	}
-	inProgressStr := firstInProgress(issue)
+	inProgressStr := firstInProgress(issue, "In Progress")
 	if inProgressStr == "N/A" {
 		return nil
 	}
@@ -1039,7 +1044,7 @@ func calcHangingBugDayWorkHours(issue *RawIssue) *float64 {
 	if err != nil {
 		return nil
 	}
-	inProgressStr := firstInProgress(issue)
+	inProgressStr := firstInProgress(issue, "In Progress")
 	if inProgressStr == "N/A" {
 		return nil
 	}
