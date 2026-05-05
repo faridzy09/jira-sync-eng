@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -31,8 +32,9 @@ type Config struct {
 	CredentialsPath string
 
 	// Google Calendar
-	GCalOwnerEmail string
-	GCalOAuth2Path string
+	GCalOwnerEmail    string
+	GCalOAuth2Path    string
+	GCalFilterEmails  []string
 
 	// Date base (untuk kalkulasi week)
 	FirstYear  string
@@ -74,8 +76,9 @@ func Load() *Config {
 		CredentialsPath: getEnv("GOOGLE_CREDENTIALS_PATH", "credentials.json"),
 
 		// Google Calendar
-		GCalOwnerEmail: getEnv("GCAL_OWNER_EMAIL", ""),
-		GCalOAuth2Path: getEnv("GCAL_OAUTH2_PATH", "oauth2_client.json"),
+		GCalOwnerEmail:   getEnv("GCAL_OWNER_EMAIL", ""),
+		GCalOAuth2Path:   getEnv("GCAL_OAUTH2_PATH", "oauth2_client.json"),
+		GCalFilterEmails: getEnvSlice("GCAL_FILTER_EMAILS", ","),
 
 		// Date base
 		FirstYear:  getEnv("FIRST_YEAR", "2024"),
@@ -115,6 +118,21 @@ func getEnv(key, defaultVal string) string {
 		return val
 	}
 	return defaultVal
+}
+
+func getEnvSlice(key, sep string) []string {
+	val := os.Getenv(key)
+	if val == "" {
+		return nil
+	}
+	parts := strings.Split(val, sep)
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
 }
 
 func (c *Config) GetDoneWeekBaseDate() time.Time {

@@ -131,17 +131,9 @@ func main() {
 		// Email akun yang login (pemilik kalender / organizer grooming)
 		calendarOwner := cfg.GCalOwnerEmail
 
-		// Kalender yang akan di-fetch (harus sudah di-share ke GCAL_OWNER_EMAIL)
-		// Setara dengan fitur "Meet with..." di Google Calendar
-		gcalFilterEmails := []string{
-			"irvan.hadiyana@thelionparcel.com",
-			"susi.cahyati@thelionparcel.com",
-			"farid.habiburrohim@thelionparcel.com",
-			"falih.mulyana@thelionparcel.com",
-			"faridho@thelionparcel.com",
-			"sholahuddin.alisyahbana@thelionparcel.com",
-			"deri.kurniawan@thelionparcel.com",
-		}
+		// Kalender yang akan di-fetch — diambil dari env GCAL_FILTER_EMAILS (comma-separated)
+		// Setiap kalender harus sudah di-share ke GCAL_OWNER_EMAIL
+		gcalFilterEmails := cfg.GCalFilterEmails
 
 		gcalClient, err := gcal.NewClient(cfg.GCalOAuth2Path, calendarOwner, gcalFilterEmails)
 		if err != nil {
