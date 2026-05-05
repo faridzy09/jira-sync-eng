@@ -30,6 +30,10 @@ type Config struct {
 	CredentialsJSON string
 	CredentialsPath string
 
+	// Google Calendar
+	GCalOwnerEmail string
+	GCalOAuth2Path string
+
 	// Date base (untuk kalkulasi week)
 	FirstYear  string
 	FirstMonth string
@@ -68,6 +72,10 @@ func Load() *Config {
 		SpreadsheetID:   getEnv("SPREADSHEET_ID", ""),
 		CredentialsJSON: getEnv("GOOGLE_CREDENTIALS_JSON", ""),
 		CredentialsPath: getEnv("GOOGLE_CREDENTIALS_PATH", "credentials.json"),
+
+		// Google Calendar
+		GCalOwnerEmail: getEnv("GCAL_OWNER_EMAIL", ""),
+		GCalOAuth2Path: getEnv("GCAL_OAUTH2_PATH", "oauth2_client.json"),
 
 		// Date base
 		FirstYear:  getEnv("FIRST_YEAR", "2024"),

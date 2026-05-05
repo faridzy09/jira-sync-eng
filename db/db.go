@@ -26,6 +26,12 @@ func NewRepository(host, port, user, dbname string) (*Repository, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Konfigurasi connection pool agar tidak terlalu banyak koneksi idle
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
@@ -225,6 +231,9 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			return nil, err
 		}
 		issues = append(issues, issue)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
 	}
 	return issues, nil
 }

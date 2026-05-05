@@ -6,8 +6,10 @@ import (
 	"jira-sync-eng/models"
 	"os"
 	"strconv"
+	"time"
 
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
@@ -64,11 +66,12 @@ var HEADERS = []interface{}{
 }
 
 // clearSheet membersihkan semua konten dan format sheet, serta expand baris jika kurang.
+// Mengembalikan sheetID agar pemanggil tidak perlu memanggil getSheetID secara terpisah.
 // rowCount: jumlah baris yang dibutuhkan.
-func (c *Client) clearSheet(sheetName string, rowCount int) error {
+func (c *Client) clearSheet(sheetName string, rowCount int) (int64, error) {
 	ss, err := c.service.Spreadsheets.Get(c.spreadsheetID).Do()
 	if err != nil {
-		return fmt.Errorf("get spreadsheet error: %w", err)
+		return 0, fmt.Errorf("get spreadsheet error: %w", err)
 	}
 
 	var sheetID int64 = -1
@@ -87,7 +90,7 @@ func (c *Client) clearSheet(sheetName string, rowCount int) error {
 		if neededRows < 1000 {
 			neededRows = 1000
 		}
-		_, err = c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		res, err := c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
 			Requests: []*sheets.Request{{
 				AddSheet: &sheets.AddSheetRequest{
 					Properties: &sheets.SheetProperties{
@@ -101,10 +104,14 @@ func (c *Client) clearSheet(sheetName string, rowCount int) error {
 			}},
 		}).Do()
 		if err != nil {
-			return fmt.Errorf("add sheet error: %w", err)
+			return 0, fmt.Errorf("add sheet error: %w", err)
+		}
+		// Ambil sheetID dari response agar tidak perlu API call tambahan
+		if len(res.Replies) > 0 && res.Replies[0].AddSheet != nil {
+			sheetID = res.Replies[0].AddSheet.Properties.SheetId
 		}
 		fmt.Printf("Sheet '%s' created\n", sheetName)
-		return nil
+		return sheetID, nil
 	}
 
 	neededRows := int64(rowCount) + 10
@@ -150,25 +157,23 @@ func (c *Client) clearSheet(sheetName string, rowCount int) error {
 		},
 	})
 
-	_, err = c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
-		Requests: requests,
-	}).Do()
-	if err != nil {
-		return fmt.Errorf("clear sheet error: %w", err)
+	if err = c.retryBatchUpdate(&sheets.BatchUpdateSpreadsheetRequest{Requests: requests}); err != nil {
+		return 0, fmt.Errorf("clear sheet error: %w", err)
 	}
 
 	// Clear konten dengan Values API (lebih reliable untuk menghapus semua value)
 	clearRange := fmt.Sprintf("%s!A1:AX%d", sheetName, totalRows)
 	_, err = c.service.Spreadsheets.Values.Clear(c.spreadsheetID, clearRange, &sheets.ClearValuesRequest{}).Do()
 	if err != nil {
-		return fmt.Errorf("clear values error: %w", err)
+		return 0, fmt.Errorf("clear values error: %w", err)
 	}
 
 	fmt.Printf("Sheet '%s' cleared\n", sheetName)
-	return nil
+	return sheetID, nil
 }
 
 // getSheetID returns the sheetId for the given sheet name.
+// Digunakan di luar SyncToSheet/SyncStorySummary jika perlu.
 func (c *Client) getSheetID(sheetName string) (int64, error) {
 	ss, err := c.service.Spreadsheets.Get(c.spreadsheetID).Do()
 	if err != nil {
@@ -182,48 +187,60 @@ func (c *Client) getSheetID(sheetName string) (int64, error) {
 	return 0, fmt.Errorf("sheet '%s' not found", sheetName)
 }
 
-// applyNumericFormats applies number formatting to numeric columns in the Jira sheet.
-// intCols  → #,##0       (Done Week, Release Week, Count Fix Version, Actual Task Done Week)
-// floatCols → #,##0.00   (Story Point, all Hours columns)
+// getSheetRowCount mengembalikan jumlah baris yang ada di sheet, 0 jika sheet belum ada.
+func (c *Client) getSheetRowCount(sheetName string) (int, error) {
+	ss, err := c.service.Spreadsheets.Get(c.spreadsheetID).Do()
+	if err != nil {
+		return 0, err
+	}
+	for _, s := range ss.Sheets {
+		if s.Properties.Title == sheetName {
+			return int(s.Properties.GridProperties.RowCount), nil
+		}
+	}
+	return 0, nil
+}
+
+// retryBatchUpdate retries a BatchUpdate on transient 5xx errors with exponential backoff.
+func (c *Client) retryBatchUpdate(req *sheets.BatchUpdateSpreadsheetRequest) error {
+	const maxAttempts = 5
+	delay := 2 * time.Second
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		_, err := c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, req).Do()
+		if err == nil {
+			return nil
+		}
+		if apiErr, ok := err.(*googleapi.Error); ok && apiErr.Code >= 500 {
+			if attempt == maxAttempts {
+				return err
+			}
+			fmt.Printf("BatchUpdate attempt %d failed (%d), retrying in %s...\n", attempt, apiErr.Code, delay)
+			time.Sleep(delay)
+			delay *= 2
+			continue
+		}
+		return err
+	}
+	return nil
+}
+
+// applyNumericFormats menerapkan format angka ke kolom numerik di sheet Jira.
+// Kolom yang berurutan (adjacent) digabung dalam satu request agar lebih efisien.
+// intCols   → #,##0      (Done Week, Release Week, Count Fix Version, dll)
+// floatCols → #,##0.00   (Story Point, semua kolom Hours)
 func (c *Client) applyNumericFormats(sheetID int64, totalRows int) error {
-	endRow := int64(totalRows) + 1 // +1 to cover all data rows
+	endRow := int64(totalRows) + 1 // baris header (1) + baris data
 
-	// Column indices (0-based) — must match HEADERS order
-	intCols := []int64{
-		6,  // Done Week
-		10, // Release Week
-		28, // Count Fix Version
-		35, // Actual Task Done Week
-		// 36 = Actual Task Done Month (text, skip)
-		37, // Actual Task Done Year
-	}
-	floatCols := []int64{
-		11, // Story Point
-		14, // Coding Hours
-		15, // Code Review Hours
-		16, // Code Review Day Work Hours
-		17, // Testing Hours
-		// 18 = First Ready to Test Date (text)
-		// 19 = First In QA Date (text)
-		20, // Hanging Bug By Eng Hours
-		21, // Hanging Bug By Eng Day Work Hours
-		22, // Hanging Bug By QA Hours
-		23, // Hanging Bug By QA Day Work Hours
-		24, // Code Review Bug Hours
-		25, // Code Review Bug Day Work Hours
-		26, // Fixing Hours
-		27, // Retest Hours
-	}
-
-	makeRepeat := func(col int64, pattern string) *sheets.Request {
+	// makeRange membuat satu RepeatCell request untuk range kolom [startCol, endCol).
+	makeRange := func(startCol, endCol int64, pattern string) *sheets.Request {
 		return &sheets.Request{
 			RepeatCell: &sheets.RepeatCellRequest{
 				Range: &sheets.GridRange{
 					SheetId:          sheetID,
-					StartRowIndex:    1, // skip header row
+					StartRowIndex:    1, // lewati baris header
 					EndRowIndex:      endRow,
-					StartColumnIndex: col,
-					EndColumnIndex:   col + 1,
+					StartColumnIndex: startCol,
+					EndColumnIndex:   endCol,
 				},
 				Cell: &sheets.CellData{
 					UserEnteredFormat: &sheets.CellFormat{
@@ -238,18 +255,32 @@ func (c *Client) applyNumericFormats(sheetID int64, totalRows int) error {
 		}
 	}
 
-	var requests []*sheets.Request
-	for _, col := range intCols {
-		requests = append(requests, makeRepeat(col, "#,##0"))
-	}
-	for _, col := range floatCols {
-		requests = append(requests, makeRepeat(col, "#,##0.00"))
+	// Kolom integer — tidak ada yang berurutan, satu request per kolom
+	// Indeks kolom (0-based) harus sesuai urutan HEADERS
+	intRequests := []*sheets.Request{
+		makeRange(6, 7, "#,##0"),   // Done Week
+		makeRange(10, 11, "#,##0"), // Release Week
+		makeRange(28, 29, "#,##0"), // Count Fix Version
+		makeRange(35, 36, "#,##0"), // Actual Task Done Week
+		// 36 = Actual Task Done Month (teks, skip)
+		makeRange(37, 38, "#,##0"), // Actual Task Done Year
 	}
 
-	_, err := c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
-		Requests: requests,
-	}).Do()
-	if err != nil {
+	// Kolom float — kolom berurutan digabung dalam satu request agar hemat API call:
+	//   Kolom 14–17 (Coding, Code Review, Code Review Day Work, Testing Hours)
+	//   Kolom 20–27 (Hanging Bug Eng, Eng Day Work, QA, QA Day Work,
+	//                Code Review Bug, Code Review Bug Day Work, Fixing, Retest Hours)
+	// Total: 19 request → 8 request
+	floatRequests := []*sheets.Request{
+		makeRange(11, 12, "#,##0.00"), // Story Point
+		// 12 = From Type (teks), 13 = Parent (teks) → skip
+		makeRange(14, 18, "#,##0.00"), // Coding … Testing Hours (4 kolom sekaligus)
+		// 18 = First Bug Ready to Test Date (teks), 19 = First Retest Date (teks) → skip
+		makeRange(20, 28, "#,##0.00"), // Hanging Bug … Retest Hours (8 kolom sekaligus)
+	}
+
+	requests := append(intRequests, floatRequests...)
+	if err := c.retryBatchUpdate(&sheets.BatchUpdateSpreadsheetRequest{Requests: requests}); err != nil {
 		return fmt.Errorf("apply numeric formats error: %w", err)
 	}
 	fmt.Println("Numeric formats applied")
@@ -257,14 +288,15 @@ func (c *Client) applyNumericFormats(sheetID int64, totalRows int) error {
 }
 
 func (c *Client) SyncToSheet(sheetName string, issues []models.JiraIssue) error {
-	// 1. Hapus dan buat ulang sheet
-	if err := c.clearSheet(sheetName, len(issues)+1); err != nil {
+	// 1. Hapus dan buat ulang sheet — sheetID langsung didapat, tidak perlu API call tambahan
+	var err error
+	sheetID, err := c.clearSheet(sheetName, len(issues)+1)
+	if err != nil {
 		return err
 	}
 
 	// 2. Tulis header
 	headerRange := sheetName + "!A1"
-	var err error
 	_, err = c.service.Spreadsheets.Values.Update(
 		c.spreadsheetID,
 		headerRange,
@@ -304,10 +336,6 @@ func (c *Client) SyncToSheet(sheetName string, issues []models.JiraIssue) error 
 	}
 
 	// 4. Terapkan number formatting ke kolom numerik
-	sheetID, err := c.getSheetID(sheetName)
-	if err != nil {
-		return err
-	}
 	if err := c.applyNumericFormats(sheetID, len(issues)); err != nil {
 		return err
 	}

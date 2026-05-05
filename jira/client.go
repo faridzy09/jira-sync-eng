@@ -84,6 +84,64 @@ var qaAssignees = map[string]bool{
 	"Ferdyan Cahya":         true,
 }
 
+// fetchPage mengambil satu halaman Jira dengan retry backoff untuk error 429/5xx.
+func (c *Client) fetchPage(payload map[string]interface{}) (*jiraResponse, error) {
+	const maxAttempts = 5
+	delay := 2 * time.Second
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+
+		req, err := http.NewRequest("POST",
+			c.config.BaseURL+"/rest/api/3/search/jql",
+			bytes.NewBuffer(body),
+		)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", c.authHeader)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		// Pastikan body ditutup setelah setiap request (bukan defer agar tidak leak di loop)
+		respBody, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+
+		// Retry untuk 429 (rate limit) dan 5xx (server error)
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+			if attempt == maxAttempts {
+				return nil, fmt.Errorf("jira error %d setelah %d percobaan: %s", resp.StatusCode, maxAttempts, string(respBody))
+			}
+			fmt.Printf("Jira error %d, retry ke-%d dalam %s...\n", resp.StatusCode, attempt, delay)
+			time.Sleep(delay)
+			delay *= 2
+			continue
+		}
+
+		if resp.StatusCode != 200 {
+			return nil, fmt.Errorf("jira error %d: %s", resp.StatusCode, string(respBody))
+		}
+
+		var result jiraResponse
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return nil, err
+		}
+		return &result, nil
+	}
+	return nil, fmt.Errorf("fetchPage: semua percobaan habis")
+}
+
 func (c *Client) FetchAllIssues() ([]jiraIssueRaw, error) {
 	var allIssues []jiraIssueRaw
 	var nextPageToken string
@@ -110,32 +168,8 @@ func (c *Client) FetchAllIssues() ([]jiraIssueRaw, error) {
 			payload["nextPageToken"] = nextPageToken
 		}
 
-		body, _ := json.Marshal(payload)
-		req, err := http.NewRequest("POST",
-			c.config.BaseURL+"/rest/api/3/search/jql",
-			bytes.NewBuffer(body),
-		)
+		result, err := c.fetchPage(payload)
 		if err != nil {
-			return nil, err
-		}
-
-		req.Header.Set("Authorization", c.authHeader)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		respBody, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != 200 {
-			return nil, fmt.Errorf("jira error %d: %s", resp.StatusCode, string(respBody))
-		}
-
-		var result jiraResponse
-		if err := json.Unmarshal(respBody, &result); err != nil {
 			return nil, err
 		}
 
@@ -304,10 +338,16 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 		}
 	}
 
+	// ── Assignee ─────────────────────────────────────────────
+	assignee := "Unassigned"
+	if fields.Assignee != nil {
+		assignee = fields.Assignee.DisplayName
+	}
+
 	// ── Actual task dates ────────────────────────────────────
 	doneDateAt := doneTask(issue)
 	actualStartDate := firstInProgress(issue, "In Progress")
-	if qaAssignees[fields.Assignee.DisplayName] || issueType == "Sub-task QA" {
+	if qaAssignees[assignee] || issueType == "Sub-task QA" {
 		// Jika assignee adalah QA, gunakan "In QA" dari status
 		actualStartDate = firstInProgress(issue, "In QA")
 	}
@@ -400,12 +440,6 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 	var doneWeekPtr *int
 	if doneWeekNum > 0 {
 		doneWeekPtr = &doneWeekNum
-	}
-
-	// ── Assignee ─────────────────────────────────────────────
-	assignee := "Unassigned"
-	if fields.Assignee != nil {
-		assignee = fields.Assignee.DisplayName
 	}
 
 	// ── Task Status & Status Story ───────────────────────────
@@ -695,7 +729,7 @@ func doneTask(issue *RawIssue) string {
 func firstInProgress(issue *RawIssue, status string) string {
 	for _, h := range issue.Changelog.Histories {
 		for _, item := range h.Items {
-			if item.Field == "status" && strings.ToLower(item.ToString) == status {
+			if item.Field == "status" && strings.EqualFold(item.ToString, status) {
 				if t, err := parseJiraTime(h.Created); err == nil {
 					return t.Format("2006-01-02 15:04:05")
 				}

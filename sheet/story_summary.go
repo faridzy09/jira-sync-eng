@@ -275,16 +275,13 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 		})
 	}
 
-	// ── STEP 5: Clear and recreate sheet ─────────────────────
-	if err := c.clearSheet(sheetName, len(rows)+2); err != nil {
+	// ── STEP 5: Clear and recreate sheet — sheetID langsung didapat ─────
+	sheetID, err := c.clearSheet(sheetName, len(rows)+2)
+	if err != nil {
 		return err
 	}
 
 	// ── STEP 6: Apply merges & formatting ────────────────────
-	sheetID, err := c.getSheetID(sheetName)
-	if err != nil {
-		return err
-	}
 	if err = c.applyGroupHeaders(sheetID); err != nil {
 		return err
 	}
