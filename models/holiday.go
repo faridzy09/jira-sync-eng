@@ -31,9 +31,8 @@ var Holidays2026 = []Holiday{
 
 // IsHoliday mengecek apakah suatu tanggal adalah hari libur nasional
 func IsHoliday(t time.Time) bool {
-	d := t.Truncate(24 * time.Hour)
 	for _, h := range Holidays2026 {
-		if h.Date.Equal(d) {
+		if h.Date.Year() == t.Year() && h.Date.Month() == t.Month() && h.Date.Day() == t.Day() {
 			return true
 		}
 	}
@@ -42,9 +41,8 @@ func IsHoliday(t time.Time) bool {
 
 // GetHoliday mengembalikan Holiday jika tanggal tersebut libur, nil jika tidak
 func GetHoliday(t time.Time) *Holiday {
-	d := t.Truncate(24 * time.Hour)
 	for i, h := range Holidays2026 {
-		if h.Date.Equal(d) {
+		if h.Date.Year() == t.Year() && h.Date.Month() == t.Month() && h.Date.Day() == t.Day() {
 			return &Holidays2026[i]
 		}
 	}
