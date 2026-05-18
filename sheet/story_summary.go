@@ -35,10 +35,16 @@ var SUMMARY_HEADERS = []interface{}{
 	"Fix Version",  // 17
 	"Has FE",       // 18
 	"Status Story", // 19
-	"Total Hours",  // 20
-	"SLA Eng",      // 21
-	"SLA QA",       // 22
-	"Total SLA",    // 23
+	// Current Formula group
+	"Total Hours", // 20
+	"SLA Eng",     // 21
+	"SLA QA",      // 22
+	"SLA All",     // 23
+	// New Formula group
+	"Total Hours", // 24
+	"SLA Eng",     // 25
+	"SLA QA",      // 26
+	"SLA All",     // 27
 }
 
 var keyFilters = []string{"IM", "CPB", "WB"}
@@ -240,6 +246,12 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 			a = &storyAgg{}
 		}
 
+		//current formula: total hours = FTR hours + rework hours + bug count * 4 jam (asumsi tiap bug butuh 4 jam untuk fixing & retesting)
+		oldTotalHours := a.Coding + a.Testing + a.Retest
+		oldTotalEngHours := a.Coding
+		oldTotalQAHours := a.Testing + a.Retest
+
+		// new formula: total hours = semua jam kerja yang tercatat (bukan hanya FTR) + bug count * 4 jam (asumsi tiap bug butuh 4 jam untuk fixing & retesting)
 		ftrHours := a.Coding + a.CodeReview + a.Testing
 		reworkHours := a.HangingBug + a.Fixing + a.CodeRevBug + a.WaitingHours + a.Retest
 		totalHours := ftrHours + reworkHours
@@ -247,6 +259,22 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 		totalEngineerHours := a.Coding + a.CodeReview + a.Fixing + a.CodeRevBug + a.HangingBug
 		totalQAHours := a.Testing + a.WaitingHours + a.Retest
 
+		//old formula SLA:
+
+		oldSlaEng := interface{}(nil)
+		if a.SPEng > 0 {
+			oldSlaEng = round2(oldTotalEngHours / a.SPEng)
+		}
+		oldSlaQA := interface{}(nil)
+		if a.SPQA > 0 {
+			oldSlaQA = round2(oldTotalQAHours / a.SPQA)
+		}
+		oldTotalSLA := interface{}(nil)
+		if a.SP > 0 {
+			oldTotalSLA = round2(oldTotalHours / a.SP)
+		}
+
+		//new formula SLA:
 		slaEng := interface{}(nil)
 		if a.SPEng > 0 {
 			slaEng = round2(totalEngineerHours / a.SPEng)
@@ -271,6 +299,9 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 			round2(a.Coding), round2(a.CodeReview), round2(a.Testing),
 			round2(a.HangingBug), round2(a.Fixing), round2(a.CodeRevBug), round2(a.WaitingHours), round2(a.Retest),
 			a.BugCount, base.FixVersions, hasFE, base.Status,
+			// Current Formula
+			round2(oldTotalHours), oldSlaEng, oldSlaQA, oldTotalSLA,
+			// New Formula (placeholder: same as current for now)
 			round2(totalHours), slaEng, slaQA, totalSLA,
 		})
 	}
@@ -291,6 +322,8 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 	// Semua kosong by default, hanya isi group labels
 	row1[8] = "First-Time Right"
 	row1[11] = "Rework"
+	row1[20] = "Current Formula"
+	row1[24] = "New Formula"
 
 	_, err = c.service.Spreadsheets.Values.Update(
 		c.spreadsheetID, sheetName+"!A1",
@@ -312,6 +345,14 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 	row2[13] = "Code Review Hours"
 	row2[14] = "Waiting Hours"
 	row2[15] = "Retesting Hours"
+	row2[20] = "Total Hours"
+	row2[21] = "SLA Eng"
+	row2[22] = "SLA QA"
+	row2[23] = "SLA All"
+	row2[24] = "Total Hours"
+	row2[25] = "SLA Eng"
+	row2[26] = "SLA QA"
+	row2[27] = "SLA All"
 
 	_, err = c.service.Spreadsheets.Values.Update(
 		c.spreadsheetID, sheetName+"!A2",
@@ -417,12 +458,17 @@ func (c *Client) applyGroupHeaders(sheetID int64) error {
 		// Horizontal merge group cols (row 1 only)
 		mergeH(8, 11),  // First-Time Right: I–K
 		mergeH(11, 16), // Rework: L–P
+		mergeH(20, 24), // Current Formula: U–X
+		mergeH(24, 28), // New Formula: Y–AB
 		// Center group labels row 1
 		centerFmt(0, 1, 8, 16),
+		centerFmt(0, 1, 20, 28),
 		// Center group detail headers row 2
 		centerFmt(1, 2, 8, 16),
+		centerFmt(1, 2, 20, 28),
 		// Bold group labels row 1
 		boldFmt(0, 1, 8, 16),
+		boldFmt(0, 1, 20, 28),
 		// Bold semua cols row 2
 		boldFmt(1, 2, 0, int64(len(SUMMARY_HEADERS))),
 	}
@@ -456,10 +502,14 @@ func (c *Client) applyStorySummaryNumericFormats(sheetID int64, totalRows int) e
 		13, // Code Review Hours (Rework)
 		14, // Waiting Hours (Rework)
 		15, // Retesting Hours (Rework)
-		20, // Total Hours
-		21, // SLA Eng
-		22, // SLA QA
-		23, // Total SLA
+		20, // Current Formula - Total Hours
+		21, // Current Formula - SLA Eng
+		22, // Current Formula - SLA QA
+		23, // Current Formula - SLA All
+		24, // New Formula - Total Hours
+		25, // New Formula - SLA Eng
+		26, // New Formula - SLA QA
+		27, // New Formula - SLA All
 	}
 
 	makeRepeat := func(col int64, pattern string) *sheets.Request {
