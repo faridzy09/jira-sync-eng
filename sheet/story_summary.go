@@ -13,44 +13,46 @@ import (
 
 var SUMMARY_HEADERS = []interface{}{
 	"Key",               // 0
-	"PIC Lead Engineer", // 1
-	"PIC Lead QA",       // 2
-	"Done Week",         // 3
-	"Release Week",      // 4
-	"Total SP",          // 5
-	"SP QA",             // 6
-	"SP Eng",            // 7
+	"Epic Key",          // 1
+	"PIC Lead Engineer", // 2
+	"PIC Lead QA",       // 3
+	"Done Week",         // 4
+	"Release Week",      // 5
+	"Total SP",          // 6
+	"SP QA",             // 7
+	"SP Eng",            // 8
 	// First-Time Right group
-	"Coding Hours",      // 8
-	"Code Review Hours", // 9
-	"Testing Hours",     // 10
+	"Coding Hours",      // 9
+	"Code Review Hours", // 10
+	"Testing Hours",     // 11
 	// Rework group
-	"Hanging Bug Hours", // 11
-	"Fixing Hours",      // 12
-	"Code Review Hours", // 13
-	"Waiting Hours",     // 14
-	"Retesting Hours",   // 15
+	"Hanging Bug Hours", // 12
+	"Fixing Hours",      // 13
+	"Code Review Hours", // 14
+	"Waiting Hours",     // 15
+	"Retesting Hours",   // 16
 	// Rest
-	"Bug Count",    // 16
-	"Fix Version",  // 17
-	"Has FE",       // 18
-	"Status Story", // 19
+	"Bug Count",    // 17
+	"Fix Version",  // 18
+	"Has FE",       // 19
+	"Status Story", // 20
 	// Current Formula group
-	"Total Hours", // 20
-	"SLA Eng",     // 21
-	"SLA QA",      // 22
-	"SLA All",     // 23
+	"Total Hours", // 21
+	"SLA Eng",     // 22
+	"SLA QA",      // 23
+	"SLA All",     // 24
 	// New Formula group
-	"Total Hours", // 24
-	"SLA Eng",     // 25
-	"SLA QA",      // 26
-	"SLA All",     // 27
+	"Total Hours", // 25
+	"SLA Eng",     // 26
+	"SLA QA",      // 27
+	"SLA All",     // 28
 }
 
 var keyFilters = []string{"IM", "CPB", "WB"}
 
 type storyBase struct {
 	Key         string
+	EpicKey     string
 	PicEng      string
 	PicQA       string
 	DoneWeek    interface{}
@@ -97,6 +99,7 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 		storyOrder = append(storyOrder, issue.Key)
 		storyBaseMap[issue.Key] = &storyBase{
 			Key:         issue.Key,
+			EpicKey:     issue.EpicKey,
 			PicEng:      issue.PicLeadEngineer,
 			PicQA:       issue.PicLeadQA,
 			DoneWeek:    doneWeek,
@@ -142,7 +145,7 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 			sp = *issue.StoryPoint
 		}
 
-		if strings.Contains(summaryUpper, "[FE]") {
+		if isFEAssignee(issue.Assignee) {
 			a.HasFE = true
 		}
 
@@ -247,8 +250,8 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 		}
 
 		//current formula: total hours = FTR hours + rework hours + bug count * 4 jam (asumsi tiap bug butuh 4 jam untuk fixing & retesting)
-		oldTotalHours := a.Coding + a.Testing + a.Retest
-		oldTotalEngHours := a.Coding
+		oldTotalHours := a.Coding + a.Testing + a.Retest + a.Fixing
+		oldTotalEngHours := a.Coding + a.Fixing
 		oldTotalQAHours := a.Testing + a.Retest
 
 		// new formula: total hours = semua jam kerja yang tercatat (bukan hanya FTR) + bug count * 4 jam (asumsi tiap bug butuh 4 jam untuk fixing & retesting)
@@ -294,7 +297,7 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 		}
 
 		rows = append(rows, []interface{}{
-			key, base.PicEng, base.PicQA, base.DoneWeek, base.ReleaseWeek,
+			key, base.EpicKey, base.PicEng, base.PicQA, base.DoneWeek, base.ReleaseWeek,
 			round2(a.SP), round2(a.SPQA), round2(a.SPEng),
 			round2(a.Coding), round2(a.CodeReview), round2(a.Testing),
 			round2(a.HangingBug), round2(a.Fixing), round2(a.CodeRevBug), round2(a.WaitingHours), round2(a.Retest),
@@ -320,10 +323,10 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 	// ── STEP 7: Write row 1 (hanya group labels, sisanya kosong) ──
 	row1 := make([]interface{}, len(SUMMARY_HEADERS))
 	// Semua kosong by default, hanya isi group labels
-	row1[8] = "First-Time Right"
-	row1[11] = "Rework"
-	row1[20] = "Current Formula"
-	row1[24] = "New Formula"
+	row1[9] = "First-Time Right"
+	row1[12] = "Rework"
+	row1[21] = "Current Formula"
+	row1[25] = "New Formula"
 
 	_, err = c.service.Spreadsheets.Values.Update(
 		c.spreadsheetID, sheetName+"!A1",
@@ -337,22 +340,22 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 	row2 := make([]interface{}, len(SUMMARY_HEADERS))
 	copy(row2, SUMMARY_HEADERS) // semua label ada di row 2
 	// Override group cols dengan detail headers
-	row2[8] = "Coding Hours"
-	row2[9] = "Code Review Hours"
-	row2[10] = "Testing Hours"
-	row2[11] = "Hanging Bug Hours"
-	row2[12] = "Fixing Hours"
-	row2[13] = "Code Review Hours"
-	row2[14] = "Waiting Hours"
-	row2[15] = "Retesting Hours"
-	row2[20] = "Total Hours"
-	row2[21] = "SLA Eng"
-	row2[22] = "SLA QA"
-	row2[23] = "SLA All"
-	row2[24] = "Total Hours"
-	row2[25] = "SLA Eng"
-	row2[26] = "SLA QA"
-	row2[27] = "SLA All"
+	row2[9] = "Coding Hours"
+	row2[10] = "Code Review Hours"
+	row2[11] = "Testing Hours"
+	row2[12] = "Hanging Bug Hours"
+	row2[13] = "Fixing Hours"
+	row2[14] = "Code Review Hours"
+	row2[15] = "Waiting Hours"
+	row2[16] = "Retesting Hours"
+	row2[21] = "Total Hours"
+	row2[22] = "SLA Eng"
+	row2[23] = "SLA QA"
+	row2[24] = "SLA All"
+	row2[25] = "Total Hours"
+	row2[26] = "SLA Eng"
+	row2[27] = "SLA QA"
+	row2[28] = "SLA All"
 
 	_, err = c.service.Spreadsheets.Values.Update(
 		c.spreadsheetID, sheetName+"!A2",
@@ -455,20 +458,32 @@ func (c *Client) applyGroupHeaders(sheetID int64) error {
 	}
 
 	requests := []*sheets.Request{
+		// Unmerge semua cell dulu agar tidak konflik dengan merge lama (layout berubah)
+		{
+			UnmergeCells: &sheets.UnmergeCellsRequest{
+				Range: &sheets.GridRange{
+					SheetId:          sheetID,
+					StartRowIndex:    0,
+					EndRowIndex:      2,
+					StartColumnIndex: 0,
+					EndColumnIndex:   int64(len(SUMMARY_HEADERS)),
+				},
+			},
+		},
 		// Horizontal merge group cols (row 1 only)
-		mergeH(8, 11),  // First-Time Right: I–K
-		mergeH(11, 16), // Rework: L–P
-		mergeH(20, 24), // Current Formula: U–X
-		mergeH(24, 28), // New Formula: Y–AB
+		mergeH(9, 12),  // First-Time Right
+		mergeH(12, 17), // Rework
+		mergeH(21, 25), // Current Formula
+		mergeH(25, 29), // New Formula
 		// Center group labels row 1
-		centerFmt(0, 1, 8, 16),
-		centerFmt(0, 1, 20, 28),
+		centerFmt(0, 1, 9, 17),
+		centerFmt(0, 1, 21, 29),
 		// Center group detail headers row 2
-		centerFmt(1, 2, 8, 16),
-		centerFmt(1, 2, 20, 28),
+		centerFmt(1, 2, 9, 17),
+		centerFmt(1, 2, 21, 29),
 		// Bold group labels row 1
-		boldFmt(0, 1, 8, 16),
-		boldFmt(0, 1, 20, 28),
+		boldFmt(0, 1, 9, 17),
+		boldFmt(0, 1, 21, 29),
 		// Bold semua cols row 2
 		boldFmt(1, 2, 0, int64(len(SUMMARY_HEADERS))),
 	}
@@ -487,29 +502,29 @@ func (c *Client) applyStorySummaryNumericFormats(sheetID int64, totalRows int) e
 	endRow := startRow + int64(totalRows)
 
 	intCols := []int64{
-		3,  // Done Week
-		16, // Bug Count
+		4,  // Done Week
+		17, // Bug Count
 	}
 	floatCols := []int64{
-		5,  // Total SP
-		6,  // SP QA
-		7,  // SP Eng
-		8,  // Coding Hours (FTR)
-		9,  // Code Review Hours (FTR)
-		10, // Testing Hours (FTR)
-		11, // Hanging Bug Hours (Rework)
-		12, // Fixing Hours (Rework)
-		13, // Code Review Hours (Rework)
-		14, // Waiting Hours (Rework)
-		15, // Retesting Hours (Rework)
-		20, // Current Formula - Total Hours
-		21, // Current Formula - SLA Eng
-		22, // Current Formula - SLA QA
-		23, // Current Formula - SLA All
-		24, // New Formula - Total Hours
-		25, // New Formula - SLA Eng
-		26, // New Formula - SLA QA
-		27, // New Formula - SLA All
+		6,  // Total SP
+		7,  // SP QA
+		8,  // SP Eng
+		9,  // Coding Hours (FTR)
+		10, // Code Review Hours (FTR)
+		11, // Testing Hours (FTR)
+		12, // Hanging Bug Hours (Rework)
+		13, // Fixing Hours (Rework)
+		14, // Code Review Hours (Rework)
+		15, // Waiting Hours (Rework)
+		16, // Retesting Hours (Rework)
+		21, // Current Formula - Total Hours
+		22, // Current Formula - SLA Eng
+		23, // Current Formula - SLA QA
+		24, // Current Formula - SLA All
+		25, // New Formula - Total Hours
+		26, // New Formula - SLA Eng
+		27, // New Formula - SLA QA
+		28, // New Formula - SLA All
 	}
 
 	makeRepeat := func(col int64, pattern string) *sheets.Request {
@@ -579,4 +594,22 @@ func parseDoneWeek(val interface{}) int {
 
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
+}
+
+var feAssignees = map[string]struct{}{
+	"adi saputra":        {},
+	"rizki gumilar":      {},
+	"andika prasetya":    {},
+	"naufal hadi":        {},
+	"fuad rifqi zamzami": {},
+	"andikha apriadi":    {},
+	"faridho":            {},
+}
+
+func isFEAssignee(name string) bool {
+	if name == "" {
+		return false
+	}
+	_, ok := feAssignees[strings.ToLower(strings.TrimSpace(name))]
+	return ok
 }

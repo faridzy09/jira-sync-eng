@@ -487,20 +487,29 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 	isTask := (issueType == "Task" || issueType == "Sub-task" || issueType == "Sub-task Engineer" || issueType == "Sub-task QA") && !isRework
 
 	return models.JiraIssue{
-		Key:                         issue.Key,
-		IssueType:                   issueType,
-		Summary:                     fields.Summary,
-		Assignee:                    assignee,
-		PicLeadEngineer:             picEng,
-		StatusCategoryChanged:       statusCategoryChanged,
-		DoneWeek:                    doneWeekPtr,
-		FixVersions:                 fixVersionsStr,
-		FixVersionReleased:          fixVersionReleased,
-		FixVersionReleaseDate:       fixVersionReleaseDate,
-		ReleaseWeek:                 releaseWeek,
-		StoryPoint:                  fields.StoryPoint,
-		FromType:                    fromType,
-		Parent:                      parentKey,
+		Key:                   issue.Key,
+		IssueType:             issueType,
+		Summary:               fields.Summary,
+		Assignee:              assignee,
+		PicLeadEngineer:       picEng,
+		StatusCategoryChanged: statusCategoryChanged,
+		DoneWeek:              doneWeekPtr,
+		FixVersions:           fixVersionsStr,
+		FixVersionReleased:    fixVersionReleased,
+		FixVersionReleaseDate: fixVersionReleaseDate,
+		ReleaseWeek:           releaseWeek,
+		StoryPoint:            fields.StoryPoint,
+		FromType:              fromType,
+		Parent:                parentKey,
+		EpicKey: func() string {
+			if isStory && fields.Parent != nil {
+				return fields.Parent.Key
+			}
+			if story, ok := storyMap[parentKey]; ok && story.Fields.Parent != nil {
+				return story.Fields.Parent.Key
+			}
+			return parentKey
+		}(),
 		CodingHours:                 nilIfNotTask(getHours("IN PROGRESS"), isTask),
 		CodeReviewHours:             nilIfNotTask(getHours("CODE REVIEW"), isTask),
 		CodeReviewDayWorkHours:      nilIfNotTask(getDayWorkHours("CODE REVIEW"), isTask),

@@ -17,6 +17,7 @@ type JiraIssue struct {
 	StoryPoint                  *float64   `json:"story_point" db:"story_point"`
 	FromType                    string     `json:"from_type" db:"from_type"`
 	Parent                      string     `json:"parent" db:"parent"`
+	EpicKey                     string     `json:"epic_key" db:"epic_key"`
 	CodingHours                 *float64   `json:"coding_hours" db:"coding_hours"`
 	CodeReviewHours             *float64   `json:"code_review_hours" db:"code_review_hours"`
 	CodeReviewDayWorkHours      *float64   `json:"code_review_day_work_hours" db:"code_review_day_work_hours"`

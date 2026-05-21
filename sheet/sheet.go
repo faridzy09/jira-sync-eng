@@ -62,7 +62,7 @@ var HEADERS = []interface{}{
 	"Bug From Category", "PIC Lead QA", "Actual Task Start Date",
 	"Actual Task Done Date", "Actual Task Done Week",
 	"Actual Task Done Month", "Actual Task Done Year",
-	"Task Status", "Status Story",
+	"Task Status", "Status Story", "Epic Key",
 }
 
 // clearSheet membersihkan semua konten dan format sheet, serta expand baris jika kurang.
@@ -385,7 +385,7 @@ func issueToRow(i models.JiraIssue) []interface{} {
 		nullStr(i.BugFromCategory), nullStr(i.PicLeadQA),
 		i.ActualTaskStartDate, i.ActualTaskDoneDate,
 		strToInt(i.ActualTaskDoneWeek), nullStr(i.ActualTaskDoneMonth), strToInt(i.ActualTaskDoneYear),
-		i.TaskStatus, i.StatusStory,
+		i.TaskStatus, i.StatusStory, nullStr(i.EpicKey),
 	}
 }
 

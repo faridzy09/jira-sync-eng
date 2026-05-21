@@ -55,6 +55,7 @@ func (r *Repository) CreateTableIfNotExists() error {
         story_point              FLOAT,
         from_type                TEXT,
         parent                   TEXT,
+        epic_key                 TEXT,
         coding_hours             FLOAT,
         code_review_hours        FLOAT,
 		code_review_day_work_hours FLOAT,
@@ -85,6 +86,11 @@ func (r *Repository) CreateTableIfNotExists() error {
     );`
 	_, err := r.db.Exec(query)
 	if err != nil {
+		return err
+	}
+
+	// Migration: ensure epic_key column exists on pre-existing tables
+	if _, err := r.db.Exec(`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS epic_key TEXT`); err != nil {
 		return err
 	}
 
@@ -119,7 +125,7 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 		"key", "issue_type", "summary", "assignee", "pic_lead_engineer",
 		"status_category_changed", "done_week", "fix_versions",
 		"fix_version_released", "fix_version_release_date", "release_week",
-		"story_point", "from_type", "parent", "coding_hours",
+		"story_point", "from_type", "parent", "epic_key", "coding_hours",
 		"code_review_hours", "code_review_day_work_hours",
 		"testing_hours", "hanging_bug_by_eng_hours", "hanging_bug_by_eng_day_work_hours",
 		"hanging_bug_by_qa_hours", "hanging_bug_by_qa_day_work_hours",
@@ -148,7 +154,7 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 			issue.Key, issue.IssueType, issue.Summary, issue.Assignee,
 			issue.PicLeadEngineer, issue.StatusCategoryChanged, issue.DoneWeek,
 			issue.FixVersions, issue.FixVersionReleased, issue.FixVersionReleaseDate,
-			issue.ReleaseWeek, issue.StoryPoint, issue.FromType, issue.Parent,
+			issue.ReleaseWeek, issue.StoryPoint, issue.FromType, issue.Parent, issue.EpicKey,
 			issue.CodingHours, issue.CodeReviewHours, issue.CodeReviewDayWorkHours,
 			issue.TestingHours, issue.HangingBugByEngHours, issue.HangingBugByEngDayWorkHours,
 			issue.HangingBugByQAHours, issue.HangingBugByQADayWorkHours,
@@ -190,7 +196,7 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			key, issue_type, summary, assignee, pic_lead_engineer,
 			status_category_changed, done_week, fix_versions,
 			fix_version_released, fix_version_release_date, release_week,
-			story_point, from_type, parent, coding_hours,
+			story_point, from_type, parent, COALESCE(epic_key, '') AS epic_key, coding_hours,
 			code_review_hours, code_review_day_work_hours,
 			testing_hours, hanging_bug_by_eng_hours, hanging_bug_by_eng_day_work_hours,
 			hanging_bug_by_qa_hours, hanging_bug_by_qa_day_work_hours,
@@ -214,7 +220,7 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			&issue.Key, &issue.IssueType, &issue.Summary, &issue.Assignee,
 			&issue.PicLeadEngineer, &issue.StatusCategoryChanged, &issue.DoneWeek,
 			&issue.FixVersions, &issue.FixVersionReleased, &issue.FixVersionReleaseDate,
-			&issue.ReleaseWeek, &issue.StoryPoint, &issue.FromType, &issue.Parent,
+			&issue.ReleaseWeek, &issue.StoryPoint, &issue.FromType, &issue.Parent, &issue.EpicKey,
 			&issue.CodingHours, &issue.CodeReviewHours, &issue.CodeReviewDayWorkHours,
 			&issue.TestingHours, &issue.HangingBugByEngHours, &issue.HangingBugByEngDayWorkHours,
 			&issue.HangingBugByQAHours, &issue.HangingBugByQADayWorkHours,
