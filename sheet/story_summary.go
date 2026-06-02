@@ -249,7 +249,8 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 		base := storyBaseMap[key]
 		a := aggMap[key]
 		if a == nil {
-			a = &storyAgg{}
+			// Skip stories without any child issues
+			continue
 		}
 
 		//current formula: total hours = FTR hours + rework hours + bug count * 4 jam (asumsi tiap bug butuh 4 jam untuk fixing & retesting)
