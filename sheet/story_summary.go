@@ -89,6 +89,9 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 		if issue.IssueType != "Story" {
 			continue
 		}
+		if strings.Contains(issue.Key, "TITAN") {
+			continue
+		}
 		if _, exists := storyBaseMap[issue.Key]; exists {
 			continue
 		}

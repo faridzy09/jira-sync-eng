@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Business Requirements - Jira Sync Engineering</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Business Requirements - Jira Sync Engineering</h1>
+</header>
+<h1 id="business-requirements-document-brd">Business Requirements
+Document (BRD)</h1>
+<h2 id="aplikasi-jira-sync-engineering">Aplikasi: <strong>Jira Sync
+Engineering</strong></h2>
+<blockquote>
+<p>Dokumen ini disusun berdasarkan hasil pembacaan source code (Go) pada
+repository <code>jira-sync-eng</code>. Tujuan: mendeskripsikan kebutuhan
+bisnis, tujuan, ruang lingkup, dan aturan bisnis dari aplikasi tanpa
+membahas detail implementasi teknis.</p>
+</blockquote>
+<hr />
+<h2 id="1-latar-belakang">1. Latar Belakang</h2>
+<p>Tim Engineering &amp; QA membutuhkan <strong>visibilitas kinerja
+delivery</strong> yang konsisten dari aktivitas harian yang tercatat di
+<strong>Jira</strong> dan <strong>Google Calendar</strong>. Saat ini
+data tersebar di banyak issue Jira (Story, Task, Sub-task, Bug) dengan
+banyak custom field, serta event meeting (grooming) yang hanya tersimpan
+di kalender masing-masing engineer.</p>
+<p>Untuk mendukung pengambilan keputusan (kapasitas tim, SLA delivery,
+kualitas, beban rework, dan beban meeting), dibutuhkan satu aplikasi
+yang <strong>mengkonsolidasi data tersebut</strong> ke dalam basis data
+dan menyajikannya dalam <strong>Google Sheet</strong> yang mudah dibaca
+oleh stakeholder non-teknis (Engineering Manager, QA Lead, Product,
+Leadership).</p>
+<hr />
+<h2 id="2-tujuan-bisnis-business-goals">2. Tujuan Bisnis (Business
+Goals)</h2>
+<ol type="1">
+<li><strong>Otomatisasi pelaporan delivery</strong> Engineering &amp; QA
+per minggu, per bulan, dan per Story.</li>
+<li><strong>Transparansi SLA &amp; Story Point</strong> — mengukur jam
+kerja aktual vs Story Point yang dijanjikan.</li>
+<li><strong>Identifikasi rework &amp; kualitas</strong> — memisahkan jam
+kerja "first-time right" (FTR) dari rework (hanging bug, fixing, code
+review bug, retest, dll).</li>
+<li><strong>Tracking beban meeting grooming</strong> per engineer untuk
+evaluasi kapasitas tim.</li>
+<li><strong>Single source of truth</strong> — data Jira historis
+tersimpan di database internal sehingga laporan dapat di-regenerate
+tanpa menarik ulang dari Jira.</li>
+</ol>
+<hr />
+<h2 id="3-stakeholder">3. Stakeholder</h2>
+<table>
+<thead>
+<tr>
+<th>Stakeholder</th>
+<th>Kepentingan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Engineering Manager</td>
+<td>Memantau SLA, kapasitas, beban rework tim</td>
+</tr>
+<tr>
+<td>QA Lead</td>
+<td>Memantau SLA QA, jumlah bug, retest, waiting time</td>
+</tr>
+<tr>
+<td>Product Manager</td>
+<td>Memantau status Story per Fix Version &amp; Release Week</td>
+</tr>
+<tr>
+<td>Tech Lead / PIC</td>
+<td>Validasi distribusi pekerjaan &amp; deteksi outlier</td>
+</tr>
+<tr>
+<td>Leadership</td>
+<td>Laporan agregat performa engineering</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-ruang-lingkup-scope">4. Ruang Lingkup (Scope)</h2>
+<h3 id="41-in-scope">4.1 In-Scope</h3>
+<ul>
+<li>Sinkronisasi issue Jira berdasarkan <strong>JQL</strong> yang dapat
+dikonfigurasi.</li>
+<li>Penyimpanan permanen ke <strong>PostgreSQL</strong>.</li>
+<li>Penulisan tiga lembar laporan ke <strong>Google Spreadsheet</strong>
+yang sama:
+<ol type="1">
+<li>Sheet <strong>"Jira"</strong> — detail per issue (mentah, satu baris
+per issue).</li>
+<li>Sheet <strong>"Story Summary"</strong> — agregasi per Story (jam
+kerja, SP, SLA, bug count).</li>
+<li>Sheet <strong>"Event Grooming"</strong> — daftar event grooming per
+engineer dari Google Calendar.</li>
+</ol></li>
+<li>Otorisasi Google Calendar via <strong>OAuth2</strong> per user
+(sekali per akun, token persisten).</li>
+<li>Fetch event grooming dari kalender yang sudah di-share ke pemilik
+akun OAuth.</li>
+</ul>
+<h3 id="42-out-of-scope">4.2 Out-of-Scope</h3>
+<ul>
+<li>Dashboard interaktif (web UI) — output akhir hanya berupa Google
+Sheet.</li>
+<li>Notifikasi otomatis (email, Slack, dsb).</li>
+<li>Penjadwalan otomatis (cron) — aplikasi dijalankan manual via CLI
+(<code>go run main.go &lt;step&gt;</code>).</li>
+<li>Edit data Jira (aplikasi bersifat <strong>read-only</strong>
+terhadap Jira &amp; Calendar).</li>
+<li>Authentication/authorization end-user untuk aplikasi itu
+sendiri.</li>
+</ul>
+<hr />
+<h2 id="5-aktor--mode-eksekusi">5. Aktor &amp; Mode Eksekusi</h2>
+<p>Aplikasi dijalankan oleh <strong>Operator</strong> (biasanya
+Engineering Manager / Tools Engineer) melalui CLI. Tersedia 5 perintah /
+mode:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Tujuan Bisnis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>step-1</code></td>
+<td>Tarik data dari Jira → simpan ke database (refresh data mentah)</td>
+</tr>
+<tr>
+<td><code>step-2</code></td>
+<td>Publish data mentah dari DB ke sheet <strong>"Jira"</strong></td>
+</tr>
+<tr>
+<td><code>step-3</code></td>
+<td>Hitung &amp; publish ringkasan per Story ke sheet <strong>"Story
+Summary"</strong></td>
+</tr>
+<tr>
+<td><code>gcal-auth &lt;email&gt;</code></td>
+<td>Otorisasi sekali untuk satu akun Google (menyimpan token)</td>
+</tr>
+<tr>
+<td><code>google-calendar-sync</code></td>
+<td>Tarik event grooming → simpan ke DB → publish ke sheet
+<strong>"Event Grooming"</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Pemisahan menjadi step terpisah memungkinkan operator
+<strong>re-publish sheet tanpa fetch ulang Jira</strong> (menghemat rate
+limit dan waktu).</p>
+<hr />
+<h2 id="6-kebutuhan-fungsional-functional-requirements">6. Kebutuhan
+Fungsional (Functional Requirements)</h2>
+<h3 id="fr-1-sinkronisasi-issue-jira-step-1">FR-1. Sinkronisasi Issue
+Jira (Step 1)</h3>
+<ul>
+<li>Sistem <strong>harus</strong> dapat menarik seluruh issue Jira yang
+cocok dengan JQL yang dikonfigurasi.</li>
+<li>Sistem <strong>harus</strong> menangani pagination Jira secara
+otomatis.</li>
+<li>Sistem <strong>harus</strong> melakukan retry dengan exponential
+backoff untuk error <code>429</code> (rate limit) dan
+<code>5xx</code>.</li>
+<li>Setiap issue yang ditarik <strong>harus</strong> di-<em>upsert</em>
+ke database (primary key = Jira Key) — data lama tidak dihapus, hanya
+diperbarui jika sudah ada.</li>
+<li>Sistem <strong>harus</strong> menarik <strong>changelog</strong>
+issue (untuk menghitung jam kerja antar status).</li>
+</ul>
+<h3 id="fr-2-parsing--klasifikasi-issue">FR-2. Parsing &amp; Klasifikasi
+Issue</h3>
+<p>Untuk setiap issue, sistem <strong>harus</strong> menghitung dan
+menyimpan field-field berikut:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Deskripsi Bisnis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Issue Type</td>
+<td>Story / Task / Sub-task / Sub-task Engineer / Sub-task QA / Bug</td>
+</tr>
+<tr>
+<td>Assignee, PIC Lead Engineer, PIC Lead QA</td>
+<td>Penanggung jawab</td>
+</tr>
+<tr>
+<td>Story Point</td>
+<td>Estimasi effort</td>
+</tr>
+<tr>
+<td>Fix Version, Released, Release Date, Release Week</td>
+<td>Informasi rilis</td>
+</tr>
+<tr>
+<td>Done Week</td>
+<td>Nomor minggu (relatif terhadap <em>base date</em> yang
+dikonfigurasi) saat issue masuk status Done</td>
+</tr>
+<tr>
+<td>Coding Hours, Code Review Hours, Testing Hours</td>
+<td>Jam "first-time right"</td>
+</tr>
+<tr>
+<td>Hanging Bug Hours (Eng/QA), Fixing Hours, Code Review Bug Hours,
+Retest Hours</td>
+<td>Jam <strong>rework</strong></td>
+</tr>
+<tr>
+<td><code>*_day_work_hours</code></td>
+<td>Versi yang menghitung <strong>hanya jam kerja</strong>
+(mengecualikan akhir pekan &amp; hari libur)</td>
+</tr>
+<tr>
+<td>Actual Task Start / Done Date / Week / Month / Year</td>
+<td>Tanggal mulai &amp; selesai aktual</td>
+</tr>
+<tr>
+<td>Task Status, Status Story</td>
+<td>Status akhir</td>
+</tr>
+<tr>
+<td>Epic Key, Parent</td>
+<td>Hubungan hirarki issue</td>
+</tr>
+<tr>
+<td>From Type, Additional Task, Accident Bug, Bug From Category</td>
+<td>Klasifikasi tambahan</td>
+</tr>
+</tbody>
+</table>
+<h3 id="fr-3-aturan-bisnis-done-date">FR-3. Aturan Bisnis: "Done
+Date"</h3>
+<ul>
+<li>Untuk <strong>assignee yang termasuk dalam daftar QA</strong>
+(<code>qaAssignees</code>), tanggal selesai aktual diambil dari saat
+status berubah menjadi <strong><code>Done</code></strong>.</li>
+<li>Untuk assignee lainnya (Engineer), tanggal selesai aktual diambil
+dari saat status berubah menjadi
+<strong><code>Ready to Test</code></strong> (artinya pekerjaan engineer
+sudah selesai dan siap diuji).</li>
+</ul>
+<h3 id="fr-4-aturan-bisnis-hari-kerja--libur">FR-4. Aturan Bisnis: Hari
+Kerja &amp; Libur</h3>
+<ul>
+<li>Sistem <strong>harus</strong> mengenali hari libur nasional
+Indonesia (tersimpan di <code>models/holiday.go</code>).</li>
+<li>Field <code>*_day_work_hours</code> <strong>harus</strong>
+mengeluarkan jam pada hari Sabtu, Minggu, dan hari libur.</li>
+</ul>
+<h3 id="fr-4a-klasifikasi-metrik-perhitungan-jam">FR-4a. Klasifikasi
+Metrik Perhitungan Jam</h3>
+<p>Sistem menghasilkan <strong>dua versi</strong> dari sebagian besar
+metrik jam: versi <strong>kalender</strong> dan versi <strong>jam
+kerja</strong>. Pembedaan ini penting agar stakeholder dapat memilih
+sudut pandang yang sesuai (SLA real-time vs SLA berbasis kapasitas kerja
+efektif).</p>
+<h4
+id="a-berbasis-jam-kalender-24-jam--7-hari-weekend--hari-libur-ikut-dihitung">a)
+Berbasis <strong>Jam Kalender</strong> (24 jam × 7 hari, weekend &amp;
+hari libur <strong>ikut dihitung</strong>)</h4>
+<p>Dihitung sebagai durasi mentah <code>(t_keluar − t_masuk)</code>
+antara dua titik waktu di Jira changelog, tanpa filter apapun.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Sumber Perhitungan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>coding_hours</code></td>
+<td>Akumulasi waktu issue berada di status
+<strong><code>In Progress</code></strong> (changelog)</td>
+</tr>
+<tr>
+<td><code>code_review_hours</code></td>
+<td>Akumulasi waktu issue berada di status
+<strong><code>Code Review</code></strong> (changelog)</td>
+</tr>
+<tr>
+<td><code>testing_hours</code></td>
+<td>Akumulasi waktu issue berada di status
+<strong><code>In QA</code></strong> (changelog)</td>
+</tr>
+<tr>
+<td><code>retest_hours</code></td>
+<td>Akumulasi waktu issue berada di status
+<strong><code>Retesting</code></strong> (changelog)</td>
+</tr>
+<tr>
+<td><code>fixing_hours</code></td>
+<td>Akumulasi waktu di <strong><code>In Progress</code></strong> untuk
+<em>Eligible Bug</em> (Bug dengan <code>Accident Bug</code> yang
+qualified, atau rework dari Product/SA/Tech Debt)</td>
+</tr>
+<tr>
+<td><code>code_review_bug_hours</code></td>
+<td>Akumulasi waktu di <strong><code>Code Review</code></strong> untuk
+<em>Eligible Bug</em></td>
+</tr>
+<tr>
+<td><code>hanging_bug_by_eng_hours</code></td>
+<td><strong>Selisih waktu</strong> antara <code>issue.created</code> →
+transisi pertama ke <strong><code>In Progress</code></strong> (bukan
+akumulasi status)</td>
+</tr>
+<tr>
+<td><code>hanging_bug_by_qa_hours</code></td>
+<td><strong>Selisih waktu</strong> antara transisi pertama ke
+<strong><code>Ready to Test</code></strong> → transisi pertama ke
+<strong><code>In QA</code>/<code>In Testing</code></strong> (bukan
+akumulasi status)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Catatan</strong>: pada metrik <em>Hanging Bug</em>, weekend
+&amp; hari libur <strong>tetap ikut dihitung</strong> karena tujuannya
+menggambarkan berapa lama tiket "menggantung" dari sudut pandang user
+secara real-time.</p>
+</blockquote>
+<h4
+id="b-berbasis-jam-kerja-efektif-seninjumat-09001800-wib-exclude-weekend--hari-libur-nasional">b)
+Berbasis <strong>Jam Kerja Efektif</strong> (Senin–Jumat,
+<strong>09:00–18:00 WIB</strong>, exclude weekend + hari libur
+nasional)</h4>
+<p>Dihitung dengan algoritma <code>calcWorkHoursInInterval</code>:
+mengiris setiap interval per hari, hanya menjumlahkan porsi yang jatuh
+pada hari kerja <strong>dan</strong> dalam jendela jam kerja
+<code>09:00–18:00 WIB</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Sumber Perhitungan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>code_review_day_work_hours</code></td>
+<td>Status <strong><code>Code Review</code></strong> difilter hanya pada
+jam kerja</td>
+</tr>
+<tr>
+<td><code>hanging_bug_by_eng_day_work_hours</code></td>
+<td>Interval <code>created → first In Progress</code> difilter jam
+kerja</td>
+</tr>
+<tr>
+<td><code>hanging_bug_by_qa_day_work_hours</code></td>
+<td>Interval <code>first Ready to Test → first In QA</code> difilter jam
+kerja</td>
+</tr>
+<tr>
+<td><code>code_review_bug_day_work_hours</code></td>
+<td>Status <code>Code Review</code> (untuk Eligible Bug) difilter jam
+kerja</td>
+</tr>
+</tbody>
+</table>
+<p>Aturan filter:</p>
+<ol type="1">
+<li><strong>Weekend</strong> (Sabtu &amp; Minggu) selalu dilewati.</li>
+<li><strong>Hari libur nasional</strong> yang terdaftar di
+<code>models/holiday.go</code> selalu dilewati.</li>
+<li>Hanya jam <strong>09:00–18:00 WIB</strong> yang dijumlahkan dalam
+satu hari kerja.</li>
+<li>Bila status berlangsung lintas hari, durasi pada hari pertama hanya
+dihitung sampai 18:00, lalu dilanjutkan dari 09:00 hari kerja
+berikutnya.</li>
+</ol>
+<h4
+id="c-berbasis-pergeseran-status-tiket-saja-timestamp-bukan-durasi">c)
+Berbasis <strong>Pergeseran Status Tiket Saja</strong> (timestamp, bukan
+durasi)</h4>
+<p>Field-field ini <strong>bukan akumulasi jam</strong>, melainkan
+<strong>tanggal/waktu transisi</strong> atau <strong>nomor
+minggu</strong> yang dihitung dari satu titik transisi tertentu di
+changelog. Hari libur &amp; weekend tidak mempengaruhi nilai field
+ini.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Aturan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>actual_task_start_date</code></td>
+<td>Timestamp transisi pertama ke <code>In Progress</code> (Engineer)
+atau <code>In QA</code> (QA / <code>Sub-task QA</code>)</td>
+</tr>
+<tr>
+<td><code>actual_task_done_date</code></td>
+<td>Untuk QA dengan key <code>CPB</code>/<code>IM</code>: transisi
+<strong>terakhir</strong> ke <code>Done</code>; untuk Engineer: transisi
+<strong>pertama</strong> ke <code>Ready to Test</code> (fallback: last
+<code>Done</code>)</td>
+</tr>
+<tr>
+<td><code>actual_task_done_week</code></td>
+<td>Nomor minggu (relatif terhadap Base Date) dari
+<code>actual_task_done_date</code></td>
+</tr>
+<tr>
+<td><code>actual_task_done_month</code> /
+<code>actual_task_done_year</code></td>
+<td>Bulan &amp; tahun dari <code>actual_task_done_date</code></td>
+</tr>
+<tr>
+<td><code>done_week</code></td>
+<td>Nomor minggu dari <code>statusCategoryChangedDate</code> Story (saat
+Story mencapai status <code>Done</code>)</td>
+</tr>
+<tr>
+<td><code>release_week</code></td>
+<td>Nomor minggu dari <code>fixVersion.releaseDate</code> (Fix Version
+terbaru yang sudah <code>released</code>)</td>
+</tr>
+<tr>
+<td><code>first_ready_to_test_bug_date</code></td>
+<td>Timestamp transisi pertama ke <code>Ready to Test</code> (hanya
+untuk Bug)</td>
+</tr>
+<tr>
+<td><code>first_in_qa_bug_date</code></td>
+<td>Timestamp transisi pertama ke <code>In Testing</code> /
+<code>Retesting</code> / <code>In QA</code> (hanya untuk Bug)</td>
+</tr>
+<tr>
+<td><code>status_category_changed</code></td>
+<td>Timestamp <code>statusCategoryChangedDate</code> dari Jira</td>
+</tr>
+<tr>
+<td><code>task_status</code> / <code>status_story</code></td>
+<td>Status terkini issue / Story parent-nya</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Penting</strong>: perhitungan <strong>Done Week</strong>
+&amp; <strong>Release Week</strong> menggunakan hitungan <strong>minggu
+kalender penuh</strong> (Senin–Minggu) — weekend masuk dalam minggu yang
+sama; hari libur <strong>tidak</strong> menggeser nomor minggu.</p>
+</blockquote>
+<h4 id="d-pemakaian-di-sheet-story-summary">d) Pemakaian di Sheet "Story
+Summary"</h4>
+<p>Untuk menghindari distorsi karena weekend (mis. issue masuk
+<code>Code Review</code> Jumat sore), sheet <strong>"Story
+Summary"</strong> memakai versi <em>day-work</em> untuk metrik yang
+sensitif terhadap <em>idle time</em>, sementara metrik yang
+merepresentasikan effort aktif pakai versi kalender:</p>
+<table>
+<thead>
+<tr>
+<th>Kategori</th>
+<th>Kolom Sheet</th>
+<th>Versi yang Dipakai</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FTR</td>
+<td>Coding Hours</td>
+<td>Kalender (<code>coding_hours</code>)</td>
+</tr>
+<tr>
+<td>FTR</td>
+<td>Code Review Hours</td>
+<td><strong>Day-work</strong>
+(<code>code_review_day_work_hours</code>)</td>
+</tr>
+<tr>
+<td>FTR</td>
+<td>Testing Hours</td>
+<td>Kalender (<code>testing_hours</code>)</td>
+</tr>
+<tr>
+<td>Rework</td>
+<td>Hanging Bug Hours</td>
+<td><strong>Day-work</strong>
+(<code>hanging_bug_by_eng_day_work_hours</code>)</td>
+</tr>
+<tr>
+<td>Rework</td>
+<td>Fixing Hours</td>
+<td>Kalender (<code>fixing_hours</code>)</td>
+</tr>
+<tr>
+<td>Rework</td>
+<td>Code Review Hours (bug)</td>
+<td><strong>Day-work</strong>
+(<code>code_review_bug_day_work_hours</code>)</td>
+</tr>
+<tr>
+<td>Rework</td>
+<td>Waiting Hours</td>
+<td><strong>Day-work</strong>
+(<code>hanging_bug_by_qa_day_work_hours</code>)</td>
+</tr>
+<tr>
+<td>Rework</td>
+<td>Retesting Hours</td>
+<td>Kalender (<code>retest_hours</code>)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="e-kapan-setiap-field-di-populate-filter-scope">e) Kapan setiap
+field di-populate (filter scope)</h4>
+<p>Tidak semua field diisi untuk setiap issue — bergantung pada
+<code>issue_type</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Hanya diisi bila</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>coding_hours</code>, <code>code_review_hours</code>,
+<code>code_review_day_work_hours</code></td>
+<td>Issue type = <code>Task</code> / <code>Sub-task</code> /
+<code>Sub-task Engineer</code> / <code>Sub-task QA</code> <strong>dan
+bukan rework</strong></td>
+</tr>
+<tr>
+<td><code>testing_hours</code></td>
+<td>Bukan Story dan bukan Bug</td>
+</tr>
+<tr>
+<td><code>hanging_bug_*</code>, <code>retest_hours</code></td>
+<td>Issue type = <code>Bug</code></td>
+</tr>
+<tr>
+<td><code>fixing_hours</code>, <code>code_review_bug_*</code></td>
+<td><em>Eligible Bug</em> (Bug dengan kategori
+bug-from-engineer/SA/product/tech-debt, atau task yang ditandai sebagai
+rework dari Product/SA/Tech Debt)</td>
+</tr>
+<tr>
+<td><code>count_fix_version</code>, <code>status_story</code></td>
+<td>Hanya pada Story</td>
+</tr>
+<tr>
+<td><code>bug_from_category</code></td>
+<td>Hanya pada Bug</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="fr-5-aturan-bisnis-done-week">FR-5. Aturan Bisnis: Done
+Week</h3>
+<ul>
+<li>"Done Week" dihitung sebagai jumlah minggu sejak <strong>Base
+Date</strong> (default <code>FIRST_YEAR/FIRST_MONTH/FIRST_DAY</code>,
+contoh <code>2026-01-05</code>).</li>
+<li>Base Date dapat dikonfigurasi via environment variable agar dapat
+dipakai lintas kuartal.</li>
+</ul>
+<h3 id="fr-6-publish-sheet-jira-step-2">FR-6. Publish Sheet "Jira" (Step
+2)</h3>
+<ul>
+<li>Sistem <strong>harus</strong> menghapus konten lama sheet (clear)
+sebelum menulis ulang.</li>
+<li>Sistem <strong>harus</strong> menulis seluruh field issue (40+
+kolom) ke sheet <strong>"Jira"</strong>.</li>
+<li>Jumlah baris sheet <strong>harus</strong> diperluas otomatis bila
+data melebihi kapasitas.</li>
+</ul>
+<h3 id="fr-7-publish-sheet-story-summary-step-3">FR-7. Publish Sheet
+"Story Summary" (Step 3)</h3>
+<p>Sistem <strong>harus</strong> mengagregasi seluruh child issue
+(Task/Sub-task/Bug) ke Story parent-nya, kemudian menulis satu baris per
+Story dengan kolom:</p>
+<ul>
+<li>Key, Epic Key, PIC Lead Engineer, PIC Lead QA, Done Week, Release
+Week</li>
+<li><strong>Story Point</strong>: Total SP, SP QA, SP Eng</li>
+<li><strong>First-Time Right hours</strong>: Coding, Code Review,
+Testing</li>
+<li><strong>Rework hours</strong>: Hanging Bug, Fixing, Code Review Bug,
+Waiting, Retest</li>
+<li><strong>Bug Count</strong>, Fix Version, Has FE (Yes/blank), Status
+Story</li>
+<li><strong>Old Formula</strong> (legacy untuk perbandingan): Total
+Hours, SLA Eng, SLA QA, SLA All</li>
+<li><strong>New Formula</strong> (current): Total Hours, SLA Eng, SLA
+QA, SLA All</li>
+</ul>
+<p>Aturan agregasi:</p>
+<ul>
+<li>Child issue yang <code>ActualTaskDoneDate</code>
+<strong>sebelum</strong> Base Date <strong>harus</strong>
+diabaikan.</li>
+<li>Distribusi SP ke <code>SPEng</code> vs <code>SPQA</code> mengikuti
+aturan berdasarkan <strong>issue type</strong> dan <strong>prefix
+key</strong> (<code>IM</code>, <code>CPB</code>, <code>WB</code>) serta
+marker <code>[FE]</code>, <code>[BE]</code>, <code>[QA]</code> di
+summary:
+<ul>
+<li>Key mengandung <code>CPB</code>/<code>WB</code>: <code>Task</code> →
+Eng; <code>Sub-task</code> dengan <code>[FE]</code>/<code>[BE]</code> →
+Eng, lainnya → QA.</li>
+<li>Key mengandung <code>IM</code> lainnya: <code>Task</code> → Eng;
+<code>Sub-task</code> dengan <code>[QA]</code> → QA, lainnya → Eng.</li>
+<li>Key di luar filter: <code>Sub-task Engineer</code> → Eng; lainnya →
+QA.</li>
+</ul></li>
+<li><code>HasFE = Yes</code> bila ada minimal satu assignee FE pada
+child issue.</li>
+<li>Story tanpa SP tidak menghasilkan SLA (kolom kosong, bukan
+error).</li>
+<li>Rumus SLA:
+<ul>
+<li><strong>Old</strong>:
+<code>Total Hours = Coding + Testing + Fixing + Retest</code>;
+<code>SLA = Total Hours / SP</code>.</li>
+<li><strong>New</strong>: <code>Total Hours = FTR + Rework</code>; SLA
+Engineer &amp; QA dipisah berdasarkan jenis jam.</li>
+</ul></li>
+<li>Output <strong>harus</strong> diurutkan ascending berdasarkan
+<strong>Done Week</strong>.</li>
+<li>Bila parent Story dari sebuah child tidak ditemukan di dataset,
+child di-skip dan jumlahnya dicetak sebagai warning (tidak menghentikan
+proses).</li>
+</ul>
+<h3
+id="fr-8-sinkronisasi-google-calendar-gcal-auth--google-calendar-sync">FR-8.
+Sinkronisasi Google Calendar (gcal-auth &amp; google-calendar-sync)</h3>
+<ul>
+<li>Operator <strong>harus</strong> menjalankan
+<code>gcal-auth &lt;email&gt;</code> sekali per akun untuk menyetujui
+akses Google Calendar via OAuth2 (token disimpan di folder
+<code>tokens/</code>).</li>
+<li>Setiap user yang kalendernya hendak dibaca <strong>harus</strong>
+men-share kalender ke <code>GCAL_OWNER_EMAIL</code> dengan permission
+<strong>"See all event details"</strong>.</li>
+<li>Daftar email yang akan di-fetch berasal dari env
+<code>GCAL_FILTER_EMAILS</code> (comma-separated).</li>
+<li>Periode fetch: <strong>1 Januari <code>FIRST_YEAR</code></strong>
+s/d <strong>hari ini</strong>.</li>
+<li>Hanya event yang <strong>summary</strong>-nya mengandung kata
+<code>"grooming"</code> (case-insensitive) yang diambil.</li>
+<li>Sistem <strong>harus</strong> menghitung durasi event dalam menit,
+membedakan event seharian (<code>is_all_day</code>).</li>
+<li>Event <strong>harus</strong> di-upsert ke tabel
+<code>google_calendar_events</code> dengan primary key gabungan
+<code>(user_email, event_id)</code>.</li>
+<li>Sistem <strong>harus</strong> menulis hasilnya ke sheet
+<strong>"Event Grooming"</strong> dengan kolom: User Email, Bulan,
+Tahun, Mulai, Selesai, Durasi (mnt), Nama Event.</li>
+</ul>
+<h3 id="fr-9-idempotensi--keandalan">FR-9. Idempotensi &amp;
+Keandalan</h3>
+<ul>
+<li>Menjalankan ulang setiap step <strong>harus aman</strong> (tidak
+menggandakan data) — semua tulisan ke DB menggunakan UPSERT, dan tulisan
+ke Sheet selalu <em>clear &amp; rewrite</em>.</li>
+<li>Step dapat dijalankan secara independen (mis. <code>step-2</code>
+tanpa <code>step-1</code> baru) selama DB sudah berisi.</li>
+</ul>
+<hr />
+<h2 id="7-kebutuhan-non-fungsional-non-functional">7. Kebutuhan
+Non-Fungsional (Non-Functional)</h2>
+<table>
+<thead>
+<tr>
+<th>Kategori</th>
+<th>Kebutuhan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Performa</strong></td>
+<td>Mampu menarik ribuan issue dengan pagination 100/page, batch upsert
+500 row/insert.</td>
+</tr>
+<tr>
+<td><strong>Reliability</strong></td>
+<td>Retry otomatis pada error rate-limit &amp; server-side dari
+Jira.</td>
+</tr>
+<tr>
+<td><strong>Confidentiality</strong></td>
+<td>Credential (<code>credentials.json</code>,
+<code>oauth2_client.json</code>, <code>.env</code>,
+<code>tokens/</code>) <strong>tidak boleh</strong> di-commit.</td>
+</tr>
+<tr>
+<td><strong>Configurability</strong></td>
+<td>Seluruh kredensial, JQL, base date, nama sheet, dan daftar email
+dapat di-set via <code>.env</code>.</td>
+</tr>
+<tr>
+<td><strong>Maintainability</strong></td>
+<td>Pemisahan modul: <code>jira/</code>, <code>db/</code>,
+<code>sheet/</code>, <code>google-calendar/</code>,
+<code>config/</code>, <code>models/</code>.</td>
+</tr>
+<tr>
+<td><strong>Auditability</strong></td>
+<td>Setiap baris DB memiliki <code>synced_at</code> (timestamp
+sinkronisasi terakhir).</td>
+</tr>
+<tr>
+<td><strong>Portability</strong></td>
+<td>Berjalan di mana saja yang mendukung Go 1.21+ dan PostgreSQL
+13+.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8-asumsi--dependensi">8. Asumsi &amp; Dependensi</h2>
+<ul>
+<li>Tim sudah memakai field standar &amp; custom field Jira yang
+konsisten (<code>customfield_10024</code> = Story Point,
+<code>customfield_10156</code> = Accident Bug,
+<code>customfield_11397</code> = PIC Lead Engineer, dll).</li>
+<li>Akun Jira yang dipakai memiliki <strong>akses baca</strong> ke
+seluruh project yang relevan (project di luar scope dikecualikan via
+klausa <code>project NOT IN (...)</code> pada JQL).</li>
+<li>Google Spreadsheet target sudah <strong>di-share ke service
+account</strong> dengan permission Editor.</li>
+<li>Hari libur nasional yang dipakai sudah didefinisikan dalam kode
+(<code>models/holiday.go</code>); perlu diperbarui setiap tahun.</li>
+<li>Daftar <strong>QA assignees</strong> (<code>qaAssignees</code> di
+<code>jira/client.go</code>) sudah mencerminkan anggota tim QA aktif dan
+harus dijaga agar tetap relevan.</li>
+</ul>
+<hr />
+<h2 id="9-aturan-bisnis-business-rules-ringkas">9. Aturan Bisnis
+(Business Rules) Ringkas</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BR-01</td>
+<td>Done Date untuk QA (key <code>CPB</code>/<code>IM</code>) = transisi
+<strong>terakhir</strong> ke <code>Done</code>; untuk Engineer =
+transisi <strong>pertama</strong> ke <code>Ready to Test</code>
+(fallback: last <code>Done</code>).</td>
+</tr>
+<tr>
+<td>BR-02</td>
+<td>Versi <em>day-work</em> (<code>*_day_work_hours</code>) menghitung
+<strong>hanya</strong> jam <strong>09:00–18:00 WIB pada
+Senin–Jumat</strong>, mengecualikan Sabtu, Minggu, dan hari libur
+nasional. Versi kalender (tanpa suffix <code>_day_work</code>)
+menghitung 24/7 termasuk weekend &amp; libur.</td>
+</tr>
+<tr>
+<td>BR-02a</td>
+<td><code>hanging_bug_by_eng_*</code> = interval
+<code>issue.created → first In Progress</code>;
+<code>hanging_bug_by_qa_*</code> = interval
+<code>first Ready to Test → first In QA/In Testing</code>. Bukan
+akumulasi durasi status, melainkan selisih dua titik transisi.</td>
+</tr>
+<tr>
+<td>BR-02b</td>
+<td><code>coding_hours</code>, <code>code_review_*</code>,
+<code>testing_hours</code>, <code>fixing_hours</code>,
+<code>retest_hours</code>, <code>code_review_bug_*</code> = akumulasi
+durasi total saat issue berada di status terkait (dihitung dari
+changelog Jira).</td>
+</tr>
+<tr>
+<td>BR-02c</td>
+<td><code>actual_task_*_date</code>, <code>done_week</code>,
+<code>release_week</code>, <code>first_ready_to_test_bug_date</code>,
+<code>first_in_qa_bug_date</code>, <code>status_category_changed</code>,
+<code>task_status</code>, <code>status_story</code> = murni hasil
+<strong>pergeseran status tiket</strong> (timestamp / kategori),
+<strong>bukan</strong> akumulasi durasi. Hari libur &amp; weekend tidak
+mempengaruhi nilainya.</td>
+</tr>
+<tr>
+<td>BR-02d</td>
+<td><code>done_week</code> &amp; <code>release_week</code> dihitung
+sebagai jumlah minggu kalender penuh (Senin–Minggu) sejak Base Date;
+weekend masuk dalam minggu yang sama, hari libur tidak menggeser nomor
+minggu.</td>
+</tr>
+<tr>
+<td>BR-03</td>
+<td>Done Week dihitung relatif terhadap Base Date (env
+<code>FIRST_YEAR/FIRST_MONTH/FIRST_DAY</code>).</td>
+</tr>
+<tr>
+<td>BR-04</td>
+<td>Child issue dengan <code>ActualTaskDoneDate &lt; BaseDate</code>
+tidak masuk agregasi Story Summary.</td>
+</tr>
+<tr>
+<td>BR-05</td>
+<td>Distribusi SP Eng vs QA mengikuti prefix key (<code>CPB</code>,
+<code>WB</code>, <code>IM</code>) + marker <code>[FE]/[BE]/[QA]</code>
+di summary.</td>
+</tr>
+<tr>
+<td>BR-06</td>
+<td>Event grooming difilter dari summary mengandung kata
+<code>"grooming"</code> (case-insensitive).</td>
+</tr>
+<tr>
+<td>BR-07</td>
+<td>Periode fetch grooming: 1 Januari <code>FIRST_YEAR</code> s/d hari
+ini.</td>
+</tr>
+<tr>
+<td>BR-08</td>
+<td>Kalender user <strong>harus</strong> di-share ke
+<code>GCAL_OWNER_EMAIL</code> sebelum dapat di-fetch.</td>
+</tr>
+<tr>
+<td>BR-09</td>
+<td>Project yang dikecualikan dari laporan ditentukan via klausa JQL
+(<code>project NOT IN (...)</code>).</td>
+</tr>
+<tr>
+<td>BR-10</td>
+<td>Sheet selalu di-clear dan ditulis ulang setiap sync (tidak ada
+incremental sheet write).</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="10-risiko--mitigasi">10. Risiko &amp; Mitigasi</h2>
+<table>
+<thead>
+<tr>
+<th>Risiko</th>
+<th>Dampak</th>
+<th>Mitigasi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rate limit Jira</td>
+<td>Sinkronisasi gagal</td>
+<td>Sudah ada retry exponential backoff (max 5x).</td>
+</tr>
+<tr>
+<td>Token OAuth2 expired</td>
+<td>Gagal fetch calendar</td>
+<td>Jalankan ulang <code>gcal-auth &lt;email&gt;</code> (sudah
+didokumentasikan).</td>
+</tr>
+<tr>
+<td>Custom field Jira berubah ID</td>
+<td>Data parsing salah / kosong</td>
+<td>Konstanta field ID dikelola di <code>jira/client.go</code>; perlu
+review saat ada perubahan workflow.</td>
+</tr>
+<tr>
+<td>Hari libur tidak update</td>
+<td>Perhitungan <code>day_work_hours</code> salah di tahun baru</td>
+<td>Update <code>models/holiday.go</code> setiap awal tahun.</td>
+</tr>
+<tr>
+<td>Daftar <code>qaAssignees</code> outdated</td>
+<td>Salah klasifikasi Done Date</td>
+<td>Review berkala oleh QA Lead.</td>
+</tr>
+<tr>
+<td>Kalender tidak di-share ke owner</td>
+<td>Event tidak terbaca</td>
+<td>Dicatat sebagai warning, tidak menghentikan proses.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="11-kriteria-penerimaan-acceptance-criteria">11. Kriteria
+Penerimaan (Acceptance Criteria)</h2>
+<ol type="1">
+<li>Menjalankan <code>go run main.go step-1</code> berhasil
+memasukkan/memperbarui issues di tabel <code>jira_issues</code> tanpa
+duplikasi.</li>
+<li>Menjalankan <code>go run main.go step-2</code> menghasilkan sheet
+<strong>"Jira"</strong> dengan header lengkap dan seluruh issue dari
+DB.</li>
+<li>Menjalankan <code>go run main.go step-3</code> menghasilkan sheet
+<strong>"Story Summary"</strong> dengan satu baris per Story, terurut
+ascending berdasarkan Done Week, dan SLA terisi hanya bila SP &gt;
+0.</li>
+<li>Menjalankan <code>go run main.go gcal-auth &lt;email&gt;</code>
+membuat file token di folder <code>tokens/</code>.</li>
+<li>Menjalankan <code>go run main.go google-calendar-sync</code>
+menampilkan tabel hasil di console dan mengisi sheet <strong>"Event
+Grooming"</strong> untuk seluruh email pada
+<code>GCAL_FILTER_EMAILS</code>.</li>
+<li>Re-run semua step menghasilkan output yang identik
+(idempotent).</li>
+</ol>
+<hr />
+<h2 id="12-glossary">12. Glossary</h2>
+<table>
+<thead>
+<tr>
+<th>Istilah</th>
+<th>Definisi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>FTR (First-Time Right)</strong></td>
+<td>Jam kerja pada jalur normal (Coding + Code Review + Testing) tanpa
+rework.</td>
+</tr>
+<tr>
+<td><strong>Rework</strong></td>
+<td>Jam kerja yang muncul karena bug / pengulangan (Hanging Bug, Fixing,
+Code Review Bug, Waiting, Retest).</td>
+</tr>
+<tr>
+<td><strong>SLA</strong></td>
+<td>Total Hours / Story Point — indikator efisiensi delivery.</td>
+</tr>
+<tr>
+<td><strong>Done Week</strong></td>
+<td>Nomor minggu relatif terhadap Base Date saat issue selesai.</td>
+</tr>
+<tr>
+<td><strong>Base Date</strong></td>
+<td>Tanggal awal periode pelaporan (dikonfigurasi via env).</td>
+</tr>
+<tr>
+<td><strong>PIC Lead Engineer / QA</strong></td>
+<td>Penanggung jawab engineering / QA untuk sebuah Story.</td>
+</tr>
+<tr>
+<td><strong>Grooming</strong></td>
+<td>Meeting refinement backlog yang dicatat di Google Calendar.</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
