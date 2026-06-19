@@ -44,5 +44,7 @@ type JiraIssue struct {
 	StatusStory                 string     `json:"status_story" db:"status_story"`
 	FirstReadyToTestBugDate     string     `json:"first_ready_to_test_bug_date" db:"first_ready_to_test_bug_date"`
 	FirstInQABugDate            string     `json:"first_in_qa_bug_date" db:"first_in_qa_bug_date"`
+	Description                 string     `json:"description" db:"description"`
+	Labels                      string     `json:"labels" db:"labels"`
 	SyncedAt                    time.Time  `json:"synced_at" db:"synced_at"`
 }

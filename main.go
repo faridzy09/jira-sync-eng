@@ -17,7 +17,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("Usage: go run main.go [step-1|step-2|step-3|gcal-auth|google-calendar-sync]")
+		log.Fatal("Usage: go run main.go [step-1|step-2|step-3|step-4|gcal-auth|google-calendar-sync]")
 	}
 	step := os.Args[1]
 
@@ -105,6 +105,57 @@ func main() {
 			log.Fatal("Story Summary sync error:", err)
 		}
 
+	case "step-4":
+		// ── Bug Analysis: ambil bug dari DB, klasifikasi berdasarkan judul ──
+		fmt.Println("Reading bug issues from database...")
+		bugIssues, err := repo.GetBugIssues()
+		if err != nil {
+			log.Fatal("DB read error:", err)
+		}
+		fmt.Printf("Total %d bug issues\n", len(bugIssues))
+
+		fmt.Println("Analyzing bug classifications...")
+		categoryCount := map[string]int{}
+		for _, bug := range bugIssues {
+			cat := sheets.ClassifyBug(bug.Summary, bug.Description, bug.Labels)
+			categoryCount[cat]++
+		}
+
+		// Print ringkasan ke console
+		fmt.Println()
+		fmt.Printf("%-35s %s\n", "KATEGORI BUG", "JUMLAH")
+		fmt.Println(strings.Repeat("-", 45))
+		type catCount struct {
+			Cat   string
+			Count int
+		}
+		var sorted []catCount
+		for cat, cnt := range categoryCount {
+			sorted = append(sorted, catCount{cat, cnt})
+		}
+		// sort desc
+		for i := 0; i < len(sorted); i++ {
+			for j := i + 1; j < len(sorted); j++ {
+				if sorted[j].Count > sorted[i].Count {
+					sorted[i], sorted[j] = sorted[j], sorted[i]
+				}
+			}
+		}
+		for _, cc := range sorted {
+			pct := float64(cc.Count) / float64(len(bugIssues)) * 100
+			fmt.Printf("%-35s %d (%.1f%%)\n", cc.Cat, cc.Count, pct)
+		}
+
+		fmt.Println()
+		fmt.Println("Syncing Bug Analysis to Google Sheets...")
+		sheetClient, err := sheets.NewClient(cfg.CredentialsPath, cfg.SpreadsheetID)
+		if err != nil {
+			log.Fatal("Sheets client error:", err)
+		}
+		if err := sheetClient.SyncBugAnalysis("Bug Analysis", bugIssues); err != nil {
+			log.Fatal("Bug Analysis sync error:", err)
+		}
+
 	case "gcal-auth":
 		// ── Authorize satu user ke Google Calendar (jalankan sekali per user) ─
 		if len(os.Args) < 3 {
@@ -187,7 +238,7 @@ func main() {
 		}
 
 	default:
-		log.Fatalf("Unknown step: %s. Use step-1, step-2, step-3, atau google-calendar-sync", step)
+		log.Fatalf("Unknown step: %s. Use step-1, step-2, step-3, step-4, atau google-calendar-sync", step)
 	}
 
 	fmt.Println("Done!")

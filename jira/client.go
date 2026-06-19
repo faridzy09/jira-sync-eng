@@ -152,7 +152,8 @@ func (c *Client) FetchAllIssues() ([]jiraIssueRaw, error) {
 			"jql":        c.config.JQL,
 			"maxResults": 100,
 			"fields": []string{
-				"summary", "assignee", "status", "issuetype",
+				"summary", "description", "labels",
+				"assignee", "status", "issuetype",
 				"customfield_10024", "created", "updated",
 				"customfield_10195", "customfield_10196",
 				"parent", "fixVersions", "customfield_10156",
@@ -191,8 +192,10 @@ func (c *Client) FetchAllIssues() ([]jiraIssueRaw, error) {
 // ── Raw Jira field structures ────────────────────────────────
 
 type IssueFields struct {
-	Summary  string `json:"summary"`
-	Assignee *struct {
+	Summary     string          `json:"summary"`
+	Description json.RawMessage `json:"description"` // ADF format (Jira API v3)
+	Labels      []string        `json:"labels"`
+	Assignee    *struct {
 		DisplayName string `json:"displayName"`
 	} `json:"assignee"`
 	Status *struct {
@@ -546,6 +549,8 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 			}
 			return ""
 		}(),
+		Description: extractADFText(fields.Description),
+		Labels:      strings.Join(fields.Labels, ","),
 	}
 }
 
@@ -876,6 +881,37 @@ func getYear(dateStr string) int {
 		}
 	}
 	return 0
+}
+
+// adfNode adalah node dalam Atlassian Document Format.
+type adfNode struct {
+	Type    string    `json:"type"`
+	Text    string    `json:"text"`
+	Content []adfNode `json:"content"`
+}
+
+// extractADFText mengekstrak plain text dari Jira description berformat ADF.
+func extractADFText(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var doc adfNode
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return ""
+	}
+	var sb strings.Builder
+	var walk func(n adfNode)
+	walk = func(n adfNode) {
+		if n.Type == "text" && n.Text != "" {
+			sb.WriteString(n.Text)
+			sb.WriteString(" ")
+		}
+		for _, child := range n.Content {
+			walk(child)
+		}
+	}
+	walk(doc)
+	return strings.TrimSpace(sb.String())
 }
 
 func getBugCategory(reason string) string {

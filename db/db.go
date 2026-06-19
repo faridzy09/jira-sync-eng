@@ -82,6 +82,8 @@ func (r *Repository) CreateTableIfNotExists() error {
         status_story             TEXT,
         first_ready_to_test_bug_date TEXT,
         first_in_qa_bug_date         TEXT,
+        description              TEXT,
+        labels                   TEXT,
         synced_at                TIMESTAMP DEFAULT NOW()
     );`
 	_, err := r.db.Exec(query)
@@ -89,9 +91,15 @@ func (r *Repository) CreateTableIfNotExists() error {
 		return err
 	}
 
-	// Migration: ensure epic_key column exists on pre-existing tables
-	if _, err := r.db.Exec(`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS epic_key TEXT`); err != nil {
-		return err
+	// Migration: ensure columns exist on pre-existing tables
+	for _, col := range []string{
+		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS epic_key TEXT`,
+		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS description TEXT`,
+		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS labels TEXT`,
+	} {
+		if _, err := r.db.Exec(col); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -135,7 +143,8 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 		"bug_from_category", "pic_lead_qa", "actual_task_start_date",
 		"actual_task_done_date", "actual_task_done_week",
 		"actual_task_done_month", "actual_task_done_year",
-		"task_status", "status_story", "first_ready_to_test_bug_date", "first_in_qa_bug_date", "synced_at",
+		"task_status", "status_story", "first_ready_to_test_bug_date", "first_in_qa_bug_date",
+		"description", "labels", "synced_at",
 	}
 
 	placeholders := []string{}
@@ -165,6 +174,7 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 			issue.ActualTaskDoneWeek, issue.ActualTaskDoneMonth,
 			issue.ActualTaskDoneYear, issue.TaskStatus, issue.StatusStory,
 			issue.FirstReadyToTestBugDate, issue.FirstInQABugDate,
+			issue.Description, issue.Labels,
 			time.Now(),
 		)
 	}
@@ -189,6 +199,66 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 	return err
 }
 
+// GetBugIssues: ambil semua issue dengan issue_type = 'Bug'
+func (r *Repository) GetBugIssues() ([]models.JiraIssue, error) {
+	rows, err := r.db.Query(`
+		SELECT
+			key, issue_type, summary, assignee, pic_lead_engineer,
+			status_category_changed, done_week, fix_versions,
+			fix_version_released, fix_version_release_date, release_week,
+			story_point, from_type, parent, COALESCE(epic_key, '') AS epic_key, coding_hours,
+			code_review_hours, code_review_day_work_hours,
+			testing_hours, hanging_bug_by_eng_hours, hanging_bug_by_eng_day_work_hours,
+			hanging_bug_by_qa_hours, hanging_bug_by_qa_day_work_hours,
+			code_review_bug_hours, code_review_bug_day_work_hours,
+			fixing_hours, retest_hours,
+			count_fix_version, additional_task, accident_bug,
+			bug_from_category, pic_lead_qa, actual_task_start_date,
+			actual_task_done_date, actual_task_done_week,
+			actual_task_done_month, actual_task_done_year,
+			task_status, status_story, first_ready_to_test_bug_date, first_in_qa_bug_date,
+			COALESCE(description, '') AS description, COALESCE(labels, '') AS labels,
+			synced_at
+		FROM jira_issues
+		WHERE LOWER(issue_type) = 'bug'
+		ORDER BY actual_task_done_year ASC, actual_task_done_month ASC, actual_task_done_week ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var issues []models.JiraIssue
+	for rows.Next() {
+		var issue models.JiraIssue
+		err := rows.Scan(
+			&issue.Key, &issue.IssueType, &issue.Summary, &issue.Assignee,
+			&issue.PicLeadEngineer, &issue.StatusCategoryChanged, &issue.DoneWeek,
+			&issue.FixVersions, &issue.FixVersionReleased, &issue.FixVersionReleaseDate,
+			&issue.ReleaseWeek, &issue.StoryPoint, &issue.FromType, &issue.Parent, &issue.EpicKey,
+			&issue.CodingHours, &issue.CodeReviewHours, &issue.CodeReviewDayWorkHours,
+			&issue.TestingHours, &issue.HangingBugByEngHours, &issue.HangingBugByEngDayWorkHours,
+			&issue.HangingBugByQAHours, &issue.HangingBugByQADayWorkHours,
+			&issue.CodeReviewBugHours, &issue.CodeReviewBugDayWorkHours,
+			&issue.FixingHours, &issue.RetestHours, &issue.CountFixVersion, &issue.AdditionalTask,
+			&issue.AccidentBug, &issue.BugFromCategory, &issue.PicLeadQA,
+			&issue.ActualTaskStartDate, &issue.ActualTaskDoneDate,
+			&issue.ActualTaskDoneWeek, &issue.ActualTaskDoneMonth,
+			&issue.ActualTaskDoneYear, &issue.TaskStatus, &issue.StatusStory,
+			&issue.FirstReadyToTestBugDate, &issue.FirstInQABugDate,
+			&issue.Description, &issue.Labels,
+			&issue.SyncedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		issues = append(issues, issue)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+	return issues, nil
+}
+
 // GetAllForSync: ambil semua data untuk di-sync ke Sheet
 func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 	rows, err := r.db.Query(`
@@ -206,7 +276,9 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			bug_from_category, pic_lead_qa, actual_task_start_date,
 			actual_task_done_date, actual_task_done_week,
 			actual_task_done_month, actual_task_done_year,
-			task_status, status_story, first_ready_to_test_bug_date, first_in_qa_bug_date, synced_at
+			task_status, status_story, first_ready_to_test_bug_date, first_in_qa_bug_date,
+			COALESCE(description, '') AS description, COALESCE(labels, '') AS labels,
+			synced_at
 		FROM jira_issues ORDER BY actual_task_done_week ASC`)
 	if err != nil {
 		return nil, err
@@ -231,6 +303,7 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			&issue.ActualTaskDoneWeek, &issue.ActualTaskDoneMonth,
 			&issue.ActualTaskDoneYear, &issue.TaskStatus, &issue.StatusStory,
 			&issue.FirstReadyToTestBugDate, &issue.FirstInQABugDate,
+			&issue.Description, &issue.Labels,
 			&issue.SyncedAt,
 		)
 		if err != nil {
