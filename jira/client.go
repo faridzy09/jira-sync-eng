@@ -701,8 +701,7 @@ func doneTask(issue *RawIssue) string {
 		assignee = issue.Fields.Assignee.DisplayName
 	}
 
-	if qaAssignees[assignee] && (strings.Contains(issue.Key, "CPB") || strings.Contains(issue.Key, "IM")) {
-		// Assignee QA/tertentu: prioritaskan status "Done" (last transition)
+	if issue.Fields.IssueType.Name == "Bug" {
 		for i := len(histories) - 1; i >= 0; i-- {
 			h := histories[i]
 			for _, item := range h.Items {
@@ -714,27 +713,42 @@ func doneTask(issue *RawIssue) string {
 			}
 		}
 	} else {
-		// Assignee engineer: prioritaskan first "Ready to Test"
-		for _, h := range histories {
-			for _, item := range h.Items {
-				if item.Field == "status" && item.ToString == "Ready to Test" {
-					if t, err := parseJiraTime(h.Created); err == nil {
-						return t.Format("2006-01-02 15:04:05")
+		if qaAssignees[assignee] && (strings.Contains(issue.Key, "CPB") || strings.Contains(issue.Key, "IM")) {
+			// Assignee QA/tertentu: prioritaskan status "Done" (last transition)
+			for i := len(histories) - 1; i >= 0; i-- {
+				h := histories[i]
+				for _, item := range h.Items {
+					if item.Field == "status" && item.ToString == "Done" {
+						if t, err := parseJiraTime(h.Created); err == nil {
+							return t.Format("2006-01-02 15:04:05")
+						}
+					}
+				}
+			}
+		} else {
+			// Assignee engineer: prioritaskan first "Ready to Test"
+			for _, h := range histories {
+				for _, item := range h.Items {
+					if item.Field == "status" && item.ToString == "Ready to Test" {
+						if t, err := parseJiraTime(h.Created); err == nil {
+							return t.Format("2006-01-02 15:04:05")
+						}
+					}
+				}
+			}
+			// Fallback: last "Done"
+			for i := len(histories) - 1; i >= 0; i-- {
+				h := histories[i]
+				for _, item := range h.Items {
+					if item.Field == "status" && item.ToString == "Done" {
+						if t, err := parseJiraTime(h.Created); err == nil {
+							return t.Format("2006-01-02 15:04:05")
+						}
 					}
 				}
 			}
 		}
-		// Fallback: last "Done"
-		for i := len(histories) - 1; i >= 0; i-- {
-			h := histories[i]
-			for _, item := range h.Items {
-				if item.Field == "status" && item.ToString == "Done" {
-					if t, err := parseJiraTime(h.Created); err == nil {
-						return t.Format("2006-01-02 15:04:05")
-					}
-				}
-			}
-		}
+
 	}
 
 	return "N/A"
