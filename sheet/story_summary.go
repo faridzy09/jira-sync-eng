@@ -46,6 +46,12 @@ var SUMMARY_HEADERS = []interface{}{
 	"SLA Eng",     // 26
 	"SLA QA",      // 27
 	"SLA All",     // 28
+	// Development dates
+	"Start Development", // 29
+	"End Development",   // 30
+	// Testing dates
+	"Start Testing", // 31
+	"End Testing",   // 32
 }
 
 var keyFilters = []string{"IM", "CPB", "WB"}
@@ -77,6 +83,10 @@ type storyAgg struct {
 	Retest       float64
 	BugCount     int
 	HasFE        bool
+	StartDev     string // earliest ActualTaskStartDate (yyyy-mm-dd)
+	EndDev       string // latest ActualTaskDoneDate (yyyy-mm-dd)
+	StartTesting string // earliest ActualTaskStartDate of QA tasks (yyyy-mm-dd)
+	EndTesting   string // latest ActualTaskDoneDate of QA tasks (yyyy-mm-dd)
 }
 
 func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, baseDate time.Time) error {
@@ -165,6 +175,7 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 			}
 		}
 
+		isQATask := false
 		if isFiltered {
 			isCPBorWB := strings.Contains(issue.Key, "CPB") || strings.Contains(issue.Key, "WB")
 			if isCPBorWB {
@@ -175,6 +186,7 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 						a.SPEng += sp
 					} else {
 						a.SPQA += sp
+						isQATask = true
 					}
 				} else {
 					a.SPEng += sp
@@ -185,6 +197,7 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 				} else if issue.IssueType == "Sub-task" {
 					if strings.Contains(summaryUpper, "[QA]") {
 						a.SPQA += sp
+						isQATask = true
 					} else {
 						a.SPEng += sp
 					}
@@ -197,6 +210,27 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 				a.SPEng += sp
 			} else {
 				a.SPQA += sp
+				isQATask = true
+			}
+		}
+
+		if isQATask {
+			startTestDate := ""
+			if issue.ActualTaskStartDate != "" {
+				startTestDate = normalizeDate(issue.ActualTaskStartDate)
+			}
+			if startTestDate == "" && issue.ActualTaskDoneDate != "" {
+				startTestDate = normalizeDate(issue.ActualTaskDoneDate)
+			}
+			if startTestDate != "" && (a.StartTesting == "" || startTestDate < a.StartTesting) {
+				a.StartTesting = startTestDate
+			}
+
+			if issue.ActualTaskDoneDate != "" {
+				d := normalizeDate(issue.ActualTaskDoneDate)
+				if d != "" && d > a.EndTesting {
+					a.EndTesting = d
+				}
 			}
 		}
 
@@ -223,6 +257,26 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 		}
 		if issue.RetestHours != nil {
 			a.Retest += *issue.RetestHours
+		}
+
+		if !isQATask {
+			startDevDate := ""
+			if issue.ActualTaskStartDate != "" {
+				startDevDate = normalizeDate(issue.ActualTaskStartDate)
+			}
+			if startDevDate == "" && issue.ActualTaskDoneDate != "" {
+				startDevDate = normalizeDate(issue.ActualTaskDoneDate)
+			}
+			if startDevDate != "" && (a.StartDev == "" || startDevDate < a.StartDev) {
+				a.StartDev = startDevDate
+			}
+
+			if issue.ActualTaskDoneDate != "" {
+				d := normalizeDate(issue.ActualTaskDoneDate)
+				if d != "" && d > a.EndDev {
+					a.EndDev = d
+				}
+			}
 		}
 	}
 
@@ -310,6 +364,10 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 			round2(oldTotalHours), oldSlaEng, oldSlaQA, oldTotalSLA,
 			// New Formula (placeholder: same as current for now)
 			round2(totalHours), slaEng, slaQA, totalSLA,
+			// Development dates
+			a.StartDev, a.EndDev,
+			// Testing dates
+			a.StartTesting, a.EndTesting,
 		})
 	}
 
@@ -554,12 +612,45 @@ func (c *Client) applyStorySummaryNumericFormats(sheetID int64, totalRows int) e
 		}
 	}
 
+	dateCols := []int64{
+		29, // Start Development
+		30, // End Development
+		31, // Start Testing
+		32, // End Testing
+	}
+
+	makeDateRepeat := func(col int64) *sheets.Request {
+		return &sheets.Request{
+			RepeatCell: &sheets.RepeatCellRequest{
+				Range: &sheets.GridRange{
+					SheetId:          sheetID,
+					StartRowIndex:    startRow,
+					EndRowIndex:      endRow,
+					StartColumnIndex: col,
+					EndColumnIndex:   col + 1,
+				},
+				Cell: &sheets.CellData{
+					UserEnteredFormat: &sheets.CellFormat{
+						NumberFormat: &sheets.NumberFormat{
+							Type:    "DATE",
+							Pattern: "yyyy-mm-dd",
+						},
+					},
+				},
+				Fields: "userEnteredFormat.numberFormat",
+			},
+		}
+	}
+
 	var requests []*sheets.Request
 	for _, col := range intCols {
 		requests = append(requests, makeRepeat(col, "#,##0"))
 	}
 	for _, col := range floatCols {
 		requests = append(requests, makeRepeat(col, "#,##0.00"))
+	}
+	for _, col := range dateCols {
+		requests = append(requests, makeDateRepeat(col))
 	}
 
 	_, err := c.service.Spreadsheets.BatchUpdate(c.spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
@@ -598,6 +689,16 @@ func parseDoneWeek(val interface{}) int {
 
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
+}
+
+// normalizeDate parses common date formats and returns "yyyy-mm-dd", or "" on failure.
+func normalizeDate(s string) string {
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02T15:04:05Z07:00", "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.Format("2006-01-02")
+		}
+	}
+	return ""
 }
 
 var feAssignees = map[string]struct{}{

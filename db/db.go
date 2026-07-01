@@ -84,6 +84,10 @@ func (r *Repository) CreateTableIfNotExists() error {
         first_in_qa_bug_date         TEXT,
         description              TEXT,
         labels                   TEXT,
+        assigned_to_lead_date    TEXT,
+        assigned_to_team_date    TEXT,
+        lead_to_team_work_hours FLOAT,
+        reporter                 TEXT,
         synced_at                TIMESTAMP DEFAULT NOW()
     );`
 	_, err := r.db.Exec(query)
@@ -96,6 +100,10 @@ func (r *Repository) CreateTableIfNotExists() error {
 		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS epic_key TEXT`,
 		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS description TEXT`,
 		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS labels TEXT`,
+		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS assigned_to_lead_date TEXT`,
+		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS assigned_to_team_date TEXT`,
+		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS lead_to_team_work_hours FLOAT`,
+		`ALTER TABLE jira_issues ADD COLUMN IF NOT EXISTS reporter TEXT`,
 	} {
 		if _, err := r.db.Exec(col); err != nil {
 			return err
@@ -144,7 +152,9 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 		"actual_task_done_date", "actual_task_done_week",
 		"actual_task_done_month", "actual_task_done_year",
 		"task_status", "status_story", "first_ready_to_test_bug_date", "first_in_qa_bug_date",
-		"description", "labels", "synced_at",
+		"description", "labels",
+		"assigned_to_lead_date", "assigned_to_team_date", "lead_to_team_work_hours",
+		"reporter", "synced_at",
 	}
 
 	placeholders := []string{}
@@ -175,7 +185,8 @@ func (r *Repository) upsertChunk(issues []models.JiraIssue) error {
 			issue.ActualTaskDoneYear, issue.TaskStatus, issue.StatusStory,
 			issue.FirstReadyToTestBugDate, issue.FirstInQABugDate,
 			issue.Description, issue.Labels,
-			time.Now(),
+			issue.AssignedToLeadDate, issue.AssignedToTeamDate, issue.LeadToTeamWorkHours,
+			issue.Reporter, time.Now(),
 		)
 	}
 
@@ -218,6 +229,10 @@ func (r *Repository) GetBugIssues() ([]models.JiraIssue, error) {
 			actual_task_done_month, actual_task_done_year,
 			task_status, status_story, first_ready_to_test_bug_date, first_in_qa_bug_date,
 			COALESCE(description, '') AS description, COALESCE(labels, '') AS labels,
+			COALESCE(assigned_to_lead_date, '') AS assigned_to_lead_date,
+			COALESCE(assigned_to_team_date, '') AS assigned_to_team_date,
+			lead_to_team_work_hours,
+			COALESCE(reporter, '') AS reporter,
 			synced_at
 		FROM jira_issues
 		WHERE LOWER(issue_type) = 'bug'
@@ -246,7 +261,8 @@ func (r *Repository) GetBugIssues() ([]models.JiraIssue, error) {
 			&issue.ActualTaskDoneYear, &issue.TaskStatus, &issue.StatusStory,
 			&issue.FirstReadyToTestBugDate, &issue.FirstInQABugDate,
 			&issue.Description, &issue.Labels,
-			&issue.SyncedAt,
+			&issue.AssignedToLeadDate, &issue.AssignedToTeamDate, &issue.LeadToTeamWorkHours,
+			&issue.Reporter, &issue.SyncedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -278,6 +294,10 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			actual_task_done_month, actual_task_done_year,
 			task_status, status_story, first_ready_to_test_bug_date, first_in_qa_bug_date,
 			COALESCE(description, '') AS description, COALESCE(labels, '') AS labels,
+			COALESCE(assigned_to_lead_date, '') AS assigned_to_lead_date,
+			COALESCE(assigned_to_team_date, '') AS assigned_to_team_date,
+			lead_to_team_work_hours,
+			COALESCE(reporter, '') AS reporter,
 			synced_at
 		FROM jira_issues ORDER BY actual_task_done_week ASC`)
 	if err != nil {
@@ -304,7 +324,8 @@ func (r *Repository) GetAllForSync() ([]models.JiraIssue, error) {
 			&issue.ActualTaskDoneYear, &issue.TaskStatus, &issue.StatusStory,
 			&issue.FirstReadyToTestBugDate, &issue.FirstInQABugDate,
 			&issue.Description, &issue.Labels,
-			&issue.SyncedAt,
+			&issue.AssignedToLeadDate, &issue.AssignedToTeamDate, &issue.LeadToTeamWorkHours,
+			&issue.Reporter, &issue.SyncedAt,
 		)
 		if err != nil {
 			return nil, err

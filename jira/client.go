@@ -153,7 +153,7 @@ func (c *Client) FetchAllIssues() ([]jiraIssueRaw, error) {
 			"maxResults": 100,
 			"fields": []string{
 				"summary", "description", "labels",
-				"assignee", "status", "issuetype",
+				"assignee", "reporter", "status", "issuetype",
 				"customfield_10024", "created", "updated",
 				"customfield_10195", "customfield_10196",
 				"parent", "fixVersions", "customfield_10156",
@@ -198,6 +198,9 @@ type IssueFields struct {
 	Assignee    *struct {
 		DisplayName string `json:"displayName"`
 	} `json:"assignee"`
+	Reporter *struct {
+		DisplayName string `json:"displayName"`
+	} `json:"reporter"`
 	Status *struct {
 		Name string `json:"name"`
 	} `json:"status"`
@@ -341,10 +344,14 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 		}
 	}
 
-	// ── Assignee ─────────────────────────────────────────────
+	// ── Assignee & Reporter ──────────────────────────────────
 	assignee := "Unassigned"
 	if fields.Assignee != nil {
 		assignee = fields.Assignee.DisplayName
+	}
+	reporter := ""
+	if fields.Reporter != nil {
+		reporter = fields.Reporter.DisplayName
 	}
 
 	// ── Actual task dates ────────────────────────────────────
@@ -489,6 +496,9 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 
 	isTask := (issueType == "Task" || issueType == "Sub-task" || issueType == "Sub-task Engineer" || issueType == "Sub-task QA") && !isRework
 
+	assignedToLeadDate := firstAssignedToLeadDate(issue)
+	assignedToTeamDate := firstAssignedToTeamDate(issue)
+
 	return models.JiraIssue{
 		Key:                   issue.Key,
 		IssueType:             issueType,
@@ -513,6 +523,7 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 			}
 			return parentKey
 		}(),
+		Reporter: reporter,
 		CodingHours:                 nilIfNotTask(getHours("IN PROGRESS"), isTask),
 		CodeReviewHours:             nilIfNotTask(getHours("CODE REVIEW"), isTask),
 		CodeReviewDayWorkHours:      nilIfNotTask(getDayWorkHours("CODE REVIEW"), isTask),
@@ -549,8 +560,11 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 			}
 			return ""
 		}(),
-		Description: extractADFText(fields.Description),
-		Labels:      strings.Join(fields.Labels, ","),
+		Description:         extractADFText(fields.Description),
+		Labels:              strings.Join(fields.Labels, ","),
+		AssignedToLeadDate:  assignedToLeadDate,
+		AssignedToTeamDate:  assignedToTeamDate,
+		LeadToTeamWorkHours: calcLeadToTeamWorkHours(assignedToLeadDate, assignedToTeamDate),
 	}
 }
 
@@ -1166,4 +1180,58 @@ func nilIfNotTask(v *float64, condition bool) *float64 {
 		return nil
 	}
 	return v
+}
+
+// calcLeadToTeamWorkHours menghitung jam kerja efektif (Senin-Jumat 09:00-18:00 WIB,
+// exclude hari libur) antara assigned_to_lead_date dan assigned_to_team_date.
+func calcLeadToTeamWorkHours(leadDateStr, teamDateStr string) *float64 {
+	if leadDateStr == "" || teamDateStr == "" {
+		return nil
+	}
+	leadTime, err := time.ParseInLocation("2006-01-02 15:04:05", leadDateStr, wib)
+	if err != nil {
+		return nil
+	}
+	teamTime, err := time.ParseInLocation("2006-01-02 15:04:05", teamDateStr, wib)
+	if err != nil {
+		return nil
+	}
+	if !teamTime.After(leadTime) {
+		return nil
+	}
+	hrs := calcWorkHoursInInterval(leadTime, teamTime)
+	return &hrs
+}
+
+// firstAssignedToLeadDate returns the timestamp of the first changelog entry
+// where the assignee changed TO a lead engineer.
+func firstAssignedToLeadDate(issue *RawIssue) string {
+	for _, h := range issue.Changelog.Histories {
+		for _, item := range h.Items {
+			if item.Field == "assignee" && models.IsLeadEngineer(item.ToString) {
+				if t, err := parseJiraTime(h.Created); err == nil {
+					return t.Format("2006-01-02 15:04:05")
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// firstAssignedToTeamDate returns the timestamp of the first changelog entry
+// where the assignee changed FROM a lead engineer TO a non-lead (team member).
+func firstAssignedToTeamDate(issue *RawIssue) string {
+	for _, h := range issue.Changelog.Histories {
+		for _, item := range h.Items {
+			if item.Field == "assignee" &&
+				models.IsLeadEngineer(item.FromString) &&
+				item.ToString != "" &&
+				!models.IsLeadEngineer(item.ToString) {
+				if t, err := parseJiraTime(h.Created); err == nil {
+					return t.Format("2006-01-02 15:04:05")
+				}
+			}
+		}
+	}
+	return ""
 }
