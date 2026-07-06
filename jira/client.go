@@ -50,15 +50,20 @@ type jiraIssueRaw struct {
 	Key       string          `json:"key"`
 	Fields    json.RawMessage `json:"fields"`
 	Changelog struct {
-		Histories []struct {
-			Created string `json:"created"`
-			Items   []struct {
-				Field      string `json:"field"`
-				FromString string `json:"fromString"`
-				ToString   string `json:"toString"`
-			} `json:"items"`
-		} `json:"histories"`
+		Total     int       `json:"total"`
+		Histories []History `json:"histories"`
 	} `json:"changelog"`
+}
+
+// changelogPage merepresentasikan satu halaman response dari
+// GET /rest/api/3/issue/{key}/changelog (field array-nya bernama "values",
+// berbeda dari expand=changelog pada endpoint search yang bernama "histories").
+type changelogPage struct {
+	StartAt    int       `json:"startAt"`
+	MaxResults int       `json:"maxResults"`
+	Total      int       `json:"total"`
+	IsLast     bool      `json:"isLast"`
+	Values     []History `json:"values"`
 }
 
 // qaAssignees adalah daftar assignee yang done date-nya diambil dari status "Done" (bukan "Ready to Test").
@@ -142,6 +147,82 @@ func (c *Client) fetchPage(payload map[string]interface{}) (*jiraResponse, error
 	return nil, fmt.Errorf("fetchPage: semua percobaan habis")
 }
 
+// fetchChangelogPage mengambil satu halaman changelog dari GET /issue/{key}/changelog
+// dengan retry backoff untuk error 429/5xx, mirip fetchPage.
+func (c *Client) fetchChangelogPage(issueKey string, startAt int) (*changelogPage, error) {
+	const maxAttempts = 5
+	delay := 2 * time.Second
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequest("GET",
+			fmt.Sprintf("%s/rest/api/3/issue/%s/changelog?startAt=%d&maxResults=100",
+				c.config.BaseURL, issueKey, startAt),
+			nil,
+		)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", c.authHeader)
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		respBody, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+			if attempt == maxAttempts {
+				return nil, fmt.Errorf("changelog error %d untuk %s setelah %d percobaan: %s", resp.StatusCode, issueKey, maxAttempts, string(respBody))
+			}
+			time.Sleep(delay)
+			delay *= 2
+			continue
+		}
+
+		if resp.StatusCode != 200 {
+			return nil, fmt.Errorf("changelog error %d untuk %s: %s", resp.StatusCode, issueKey, string(respBody))
+		}
+
+		var page changelogPage
+		if err := json.Unmarshal(respBody, &page); err != nil {
+			return nil, err
+		}
+		return &page, nil
+	}
+	return nil, fmt.Errorf("fetchChangelogPage: semua percobaan habis")
+}
+
+// fetchFullChangelog mengambil seluruh histori changelog sebuah issue lewat endpoint
+// /issue/{key}/changelog yang mendukung pagination penuh. Ini diperlukan karena
+// expand=changelog pada endpoint search/jql memotong histori ke ~40 entri terakhir saja,
+// yang membuat perhitungan durasi per status (calcHoursByStatus dkk) meleset untuk
+// issue dengan banyak perpindahan status (mis. bolak-balik status QA).
+func (c *Client) fetchFullChangelog(issueKey string) ([]History, error) {
+	var all []History
+	startAt := 0
+
+	for {
+		page, err := c.fetchChangelogPage(issueKey, startAt)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page.Values...)
+
+		if page.IsLast || len(page.Values) == 0 || startAt+len(page.Values) >= page.Total {
+			break
+		}
+		startAt += len(page.Values)
+	}
+
+	return all, nil
+}
+
 func (c *Client) FetchAllIssues() ([]jiraIssueRaw, error) {
 	var allIssues []jiraIssueRaw
 	var nextPageToken string
@@ -172,6 +253,18 @@ func (c *Client) FetchAllIssues() ([]jiraIssueRaw, error) {
 		result, err := c.fetchPage(payload)
 		if err != nil {
 			return nil, err
+		}
+
+		for i := range result.Issues {
+			cl := &result.Issues[i].Changelog
+			if cl.Total > len(cl.Histories) {
+				full, err := c.fetchFullChangelog(result.Issues[i].Key)
+				if err != nil {
+					fmt.Printf("Warning: gagal fetch full changelog untuk %s (pakai histori terpotong): %v\n", result.Issues[i].Key, err)
+					continue
+				}
+				cl.Histories = full
+			}
 		}
 
 		allIssues = append(allIssues, result.Issues...)
