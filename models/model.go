@@ -18,6 +18,7 @@ type JiraIssue struct {
 	FromType                    string     `json:"from_type" db:"from_type"`
 	Parent                      string     `json:"parent" db:"parent"`
 	EpicKey                     string     `json:"epic_key" db:"epic_key"`
+	Reporter                    string     `json:"reporter" db:"reporter"`
 	CodingHours                 *float64   `json:"coding_hours" db:"coding_hours"`
 	CodeReviewHours             *float64   `json:"code_review_hours" db:"code_review_hours"`
 	CodeReviewDayWorkHours      *float64   `json:"code_review_day_work_hours" db:"code_review_day_work_hours"`
@@ -46,5 +47,8 @@ type JiraIssue struct {
 	FirstInQABugDate            string     `json:"first_in_qa_bug_date" db:"first_in_qa_bug_date"`
 	Description                 string     `json:"description" db:"description"`
 	Labels                      string     `json:"labels" db:"labels"`
+	AssignedToLeadDate          string     `json:"assigned_to_lead_date" db:"assigned_to_lead_date"`
+	AssignedToTeamDate          string     `json:"assigned_to_team_date" db:"assigned_to_team_date"`
+	LeadToTeamWorkHours         *float64   `json:"lead_to_team_work_hours" db:"lead_to_team_work_hours"`
 	SyncedAt                    time.Time  `json:"synced_at" db:"synced_at"`
 }
