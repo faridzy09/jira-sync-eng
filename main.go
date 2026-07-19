@@ -79,10 +79,12 @@ func main() {
 
 		// ── STEP 5: Sync ke Google Sheet ────────────────────────
 		fmt.Println("Syncing to Google Sheets...")
+		fmt.Println("[debug] creating sheets client...")
 		sheetClient, err := sheets.NewClient(cfg.CredentialsPath, cfg.SpreadsheetID)
 		if err != nil {
 			log.Fatal("Sheets client error:", err)
 		}
+		fmt.Println("[debug] sheets client created, calling SyncToSheet...")
 		if err := sheetClient.SyncToSheet("Jira", allIssues); err != nil {
 			log.Fatal("Sheets sync error:", err)
 		}

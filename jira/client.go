@@ -35,7 +35,9 @@ func NewClient(cfg Config) *Client {
 	)
 	return &Client{
 		config:     cfg,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		// Timeout mencakup seluruh request termasuk baca body. Response search/jql
+		// dengan expand=changelog untuk 100 issue bisa besar, jadi 30s terlalu ketat.
+		httpClient: &http.Client{Timeout: 3 * time.Minute},
 		authHeader: "Basic " + auth,
 	}
 }
@@ -113,14 +115,28 @@ func (c *Client) fetchPage(payload map[string]interface{}) (*jiraResponse, error
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, err
+			// Timeout / connection reset bersifat sementara → retry seperti 5xx.
+			if attempt == maxAttempts {
+				return nil, fmt.Errorf("jira request gagal setelah %d percobaan: %w", maxAttempts, err)
+			}
+			fmt.Printf("Jira request error (%v), retry ke-%d dalam %s...\n", err, attempt, delay)
+			time.Sleep(delay)
+			delay *= 2
+			continue
 		}
 
 		// Pastikan body ditutup setelah setiap request (bukan defer agar tidak leak di loop)
 		respBody, readErr := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if readErr != nil {
-			return nil, readErr
+			// "context deadline exceeded ... while reading body" masuk ke sini.
+			if attempt == maxAttempts {
+				return nil, fmt.Errorf("gagal baca body jira setelah %d percobaan: %w", maxAttempts, readErr)
+			}
+			fmt.Printf("Jira read body error (%v), retry ke-%d dalam %s...\n", readErr, attempt, delay)
+			time.Sleep(delay)
+			delay *= 2
+			continue
 		}
 
 		// Retry untuk 429 (rate limit) dan 5xx (server error)
@@ -167,13 +183,23 @@ func (c *Client) fetchChangelogPage(issueKey string, startAt int) (*changelogPag
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, err
+			if attempt == maxAttempts {
+				return nil, fmt.Errorf("changelog request %s gagal setelah %d percobaan: %w", issueKey, maxAttempts, err)
+			}
+			time.Sleep(delay)
+			delay *= 2
+			continue
 		}
 
 		respBody, readErr := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if readErr != nil {
-			return nil, readErr
+			if attempt == maxAttempts {
+				return nil, fmt.Errorf("gagal baca body changelog %s setelah %d percobaan: %w", issueKey, maxAttempts, readErr)
+			}
+			time.Sleep(delay)
+			delay *= 2
+			continue
 		}
 
 		if resp.StatusCode == 429 || resp.StatusCode >= 500 {

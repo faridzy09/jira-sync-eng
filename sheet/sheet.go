@@ -69,10 +69,12 @@ var HEADERS = []interface{}{
 // Mengembalikan sheetID agar pemanggil tidak perlu memanggil getSheetID secara terpisah.
 // rowCount: jumlah baris yang dibutuhkan.
 func (c *Client) clearSheet(sheetName string, rowCount int) (int64, error) {
+	fmt.Println("[debug] clearSheet: calling Spreadsheets.Get...")
 	ss, err := c.service.Spreadsheets.Get(c.spreadsheetID).Do()
 	if err != nil {
 		return 0, fmt.Errorf("get spreadsheet error: %w", err)
 	}
+	fmt.Println("[debug] clearSheet: Spreadsheets.Get OK")
 
 	var sheetID int64 = -1
 	var currentRows int64

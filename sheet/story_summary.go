@@ -52,6 +52,7 @@ var SUMMARY_HEADERS = []interface{}{
 	// Testing dates
 	"Start Testing", // 31
 	"End Testing",   // 32
+	"Story From",    // 33
 }
 
 var keyFilters = []string{"IM", "CPB", "WB"}
@@ -65,6 +66,7 @@ type storyBase struct {
 	ReleaseWeek string
 	FixVersions string
 	Status      string
+	StoryFrom   string
 }
 
 type storyAgg struct {
@@ -119,7 +121,32 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 			ReleaseWeek: issue.ReleaseWeek,
 			FixVersions: issue.FixVersions,
 			Status:      issue.StatusStory,
+			StoryFrom:   issue.FromType,
 		}
+	}
+
+	// ── STEP 1b: Derive Story From dari from_type child issues ─
+	// Regression menang atas Smoke/Sanity, keduanya menang atas TEDB & from_type story.
+	childFromType := map[string]string{} // parent key -> "Regression" | "Smoke/Sanity"
+	for _, issue := range issues {
+		parent := issue.Parent
+		if issue.IssueType == "Story" {
+			parent = issue.Key
+		}
+		if _, ok := storyBaseMap[parent]; !ok {
+			continue
+		}
+		switch classifyFromType(issue.FromType) {
+		case "Regression":
+			childFromType[parent] = "Regression"
+		case "Smoke/Sanity":
+			if childFromType[parent] != "Regression" {
+				childFromType[parent] = "Smoke/Sanity"
+			}
+		}
+	}
+	for key, base := range storyBaseMap {
+		base.StoryFrom = resolveStoryFrom(key, base.StoryFrom, childFromType[key])
 	}
 
 	// ── STEP 2: Aggregate child issues ───────────────────────
@@ -368,6 +395,7 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 			a.StartDev, a.EndDev,
 			// Testing dates
 			a.StartTesting, a.EndTesting,
+			base.StoryFrom,
 		})
 	}
 
@@ -702,13 +730,48 @@ func normalizeDate(s string) string {
 }
 
 var feAssignees = map[string]struct{}{
-	"adi saputra":        {},
-	"rizki gumilar":      {},
-	"andika prasetya":    {},
-	"naufal hadi":        {},
-	"fuad rifqi zamzami": {},
-	"andikha apriadi":    {},
-	"faridho":            {},
+	"adi saputra":           {},
+	"rizki gumilar":         {},
+	"andika prasetya":       {},
+	"naufal hadi":           {},
+	"fuad rifqi zamzami":    {},
+	"andikha apriadi":       {},
+	"faridho":               {},
+	"faizal bima":           {},
+	"pratama ego":           {},
+	"dorojatun chandrabumi": {},
+}
+
+// classifyFromType maps a raw from_type value to "Regression" or "Smoke/Sanity",
+// or "" when it is neither.
+func classifyFromType(fromType string) string {
+	u := strings.ToUpper(fromType)
+	switch {
+	case strings.Contains(u, "REGRESSION"):
+		return "Regression"
+	case strings.Contains(u, "SMOKE"), strings.Contains(u, "SANITY"):
+		return "Smoke/Sanity"
+	}
+	return ""
+}
+
+// resolveStoryFrom determines the Story From value.
+// Priority: Regression / Smoke/Sanity dari issue manapun di dalam story >
+// "Tech Debt" untuk key TEDB > from_type story itu sendiri > "Product".
+func resolveStoryFrom(key, ownFromType, childFromType string) string {
+	if childFromType != "" {
+		return childFromType
+	}
+	if own := classifyFromType(ownFromType); own != "" {
+		return own
+	}
+	if strings.Contains(strings.ToUpper(key), "TEDB") {
+		return "Tech Debt"
+	}
+	if ownFromType != "" {
+		return ownFromType
+	}
+	return "Product"
 }
 
 func isFEAssignee(name string) bool {
