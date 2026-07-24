@@ -34,7 +34,7 @@ func NewClient(cfg Config) *Client {
 		[]byte(fmt.Sprintf("%s:%s", cfg.Email, cfg.APIToken)),
 	)
 	return &Client{
-		config:     cfg,
+		config: cfg,
 		// Timeout mencakup seluruh request termasuk baca body. Response search/jql
 		// dengan expand=changelog untuk 100 issue bisa besar, jadi 30s terlalu ketat.
 		httpClient: &http.Client{Timeout: 3 * time.Minute},
@@ -525,19 +525,29 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 	// ── PIC Lead Engineer & QA ───────────────────────────────
 	picEng := ""
 	picQA := ""
-	if isStory {
+
+	if isBug {
 		if fields.CustomField11397 != nil {
 			picEng = fields.CustomField11397.DisplayName
 		}
 		if fields.CustomField11398 != nil {
 			picQA = fields.CustomField11398.DisplayName
 		}
-	} else if story, ok := storyMap[parentKey]; ok {
-		if story.Fields.CustomField11397 != nil {
-			picEng = story.Fields.CustomField11397.DisplayName
-		}
-		if story.Fields.CustomField11398 != nil {
-			picQA = story.Fields.CustomField11398.DisplayName
+	} else {
+		if isStory {
+			if fields.CustomField11397 != nil {
+				picEng = fields.CustomField11397.DisplayName
+			}
+			if fields.CustomField11398 != nil {
+				picQA = fields.CustomField11398.DisplayName
+			}
+		} else if story, ok := storyMap[parentKey]; ok {
+			if story.Fields.CustomField11397 != nil {
+				picEng = story.Fields.CustomField11397.DisplayName
+			}
+			if story.Fields.CustomField11398 != nil {
+				picQA = story.Fields.CustomField11398.DisplayName
+			}
 		}
 	}
 
@@ -642,7 +652,7 @@ func parseIssue(issue *RawIssue, storyMap map[string]*RawIssue, baseDate time.Ti
 			}
 			return parentKey
 		}(),
-		Reporter: reporter,
+		Reporter:                    reporter,
 		CodingHours:                 nilIfNotTask(getHours("IN PROGRESS"), isTask),
 		CodeReviewHours:             nilIfNotTask(getHours("CODE REVIEW"), isTask),
 		CodeReviewDayWorkHours:      nilIfNotTask(getDayWorkHours("CODE REVIEW"), isTask),
@@ -888,45 +898,72 @@ func doneTask(issue *RawIssue) string {
 }
 
 func firstInProgress(issue *RawIssue, status string) string {
+	var earliest time.Time
+	found := false
 	for _, h := range issue.Changelog.Histories {
 		for _, item := range h.Items {
 			if item.Field == "status" && strings.EqualFold(item.ToString, status) {
 				if t, err := parseJiraTime(h.Created); err == nil {
-					return t.Format("2006-01-02 15:04:05")
+					if !found || t.Before(earliest) {
+						earliest, found = t, true
+					}
 				}
 			}
 		}
 	}
-	return "N/A"
+	if !found {
+		return "N/A"
+	}
+	return earliest.Format("2006-01-02 15:04:05")
 }
 
 // firstReadyToTest returns the timestamp of the first transition TO "Ready to Test".
+// Catatan: histori changelog tidak selalu urut kronologis (endpoint search
+// mengembalikan newest-first, full changelog oldest-first), jadi ambil timestamp
+// paling awal—bukan match pertama di loop—agar hasilnya konsisten.
 func firstReadyToTest(issue *RawIssue) string {
+	var earliest time.Time
+	found := false
 	for _, h := range issue.Changelog.Histories {
 		for _, item := range h.Items {
 			if item.Field == "status" && item.ToString == "Ready to Test" {
 				if t, err := parseJiraTime(h.Created); err == nil {
-					return t.Format("2006-01-02 15:04:05")
+					if !found || t.Before(earliest) {
+						earliest, found = t, true
+					}
 				}
 			}
 		}
 	}
-	return "N/A"
+	if !found {
+		return "N/A"
+	}
+	return earliest.Format("2006-01-02 15:04:05")
 }
 
 // firstInTesting returns the timestamp of the first transition TO  "In Testing".
+// Sama seperti firstReadyToTest: histori bisa tidak urut, jadi ambil timestamp
+// paling awal—bukan match pertama di loop. Ini penting untuk issue yang bolak-balik
+// masuk "Retesting"/"In Testing" beberapa kali (mis. GENESIS-16363).
 func firstInTesting(issue *RawIssue) string {
+	var earliest time.Time
+	found := false
 	for _, h := range issue.Changelog.Histories {
 		for _, item := range h.Items {
 			if item.Field == "status" &&
 				(strings.ToLower(item.ToString) == "in testing" || strings.ToLower(item.ToString) == "retesting" || strings.ToLower(item.ToString) == "in qa") {
 				if t, err := parseJiraTime(h.Created); err == nil {
-					return t.Format("2006-01-02 15:04:05")
+					if !found || t.Before(earliest) {
+						earliest, found = t, true
+					}
 				}
 			}
 		}
 	}
-	return "N/A"
+	if !found {
+		return "N/A"
+	}
+	return earliest.Format("2006-01-02 15:04:05")
 }
 
 func calcHoursByStatus(issue *RawIssue) map[string]float64 {

@@ -53,6 +53,12 @@ var SUMMARY_HEADERS = []interface{}{
 	"Start Testing", // 31
 	"End Testing",   // 32
 	"Story From",    // 33
+	// Missed / Accident Bug breakdown
+	"Total Missed PRD",       // 34
+	"Total Missed TRD",       // 35
+	"Total Missed Coding",    // 36
+	"Total Missed Test Case", // 37
+	"Total Other Issue",      // 38
 }
 
 var keyFilters = []string{"IM", "CPB", "WB"}
@@ -84,11 +90,17 @@ type storyAgg struct {
 	WaitingHours float64
 	Retest       float64
 	BugCount     int
-	HasFE        bool
-	StartDev     string // earliest ActualTaskStartDate (yyyy-mm-dd)
-	EndDev       string // latest ActualTaskDoneDate (yyyy-mm-dd)
-	StartTesting string // earliest ActualTaskStartDate of QA tasks (yyyy-mm-dd)
-	EndTesting   string // latest ActualTaskDoneDate of QA tasks (yyyy-mm-dd)
+	// Accident Bug breakdown (per story)
+	MissedPRD      int
+	MissedTRD      int
+	MissedCoding   int
+	MissedTestCase int
+	OtherIssue     int
+	HasFE          bool
+	StartDev       string // earliest ActualTaskStartDate (yyyy-mm-dd)
+	EndDev         string // latest ActualTaskDoneDate (yyyy-mm-dd)
+	StartTesting   string // earliest ActualTaskStartDate of QA tasks (yyyy-mm-dd)
+	EndTesting     string // latest ActualTaskDoneDate of QA tasks (yyyy-mm-dd)
 }
 
 func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, baseDate time.Time) error {
@@ -192,6 +204,18 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 		a.SP += sp
 		if issue.IssueType == "Bug" {
 			a.BugCount++
+			switch classifyAccidentBug(issue.AccidentBug) {
+			case "MissedPRD":
+				a.MissedPRD++
+			case "MissedTRD":
+				a.MissedTRD++
+			case "MissedCoding":
+				a.MissedCoding++
+			case "MissedTestCase":
+				a.MissedTestCase++
+			case "OtherIssue":
+				a.OtherIssue++
+			}
 		}
 
 		isFiltered := false
@@ -396,6 +420,8 @@ func (c *Client) SyncStorySummary(sheetName string, issues []models.JiraIssue, b
 			// Testing dates
 			a.StartTesting, a.EndTesting,
 			base.StoryFrom,
+			// Missed / Accident Bug breakdown
+			a.MissedPRD, a.MissedTRD, a.MissedCoding, a.MissedTestCase, a.OtherIssue,
 		})
 	}
 
@@ -594,6 +620,11 @@ func (c *Client) applyStorySummaryNumericFormats(sheetID int64, totalRows int) e
 	intCols := []int64{
 		4,  // Done Week
 		17, // Bug Count
+		34, // Total Missed PRD
+		35, // Total Missed TRD
+		36, // Total Missed Coding
+		37, // Total Missed Test Case
+		38, // Total Other Issue
 	}
 	floatCols := []int64{
 		6,  // Total SP
@@ -740,6 +771,35 @@ var feAssignees = map[string]struct{}{
 	"faizal bima":           {},
 	"pratama ego":           {},
 	"dorojatun chandrabumi": {},
+}
+
+// accidentBugCategory maps a raw Accident Bug value to its breakdown category.
+var accidentBugCategory = map[string]string{
+	// Total Missed PRD
+	"changes requirement": "MissedPRD",
+	"out of requirement":  "MissedPRD",
+	"changes design":      "MissedPRD",
+	// Total Missed TRD
+	"bug case not covered": "MissedTRD",
+	"additional trd":       "MissedTRD",
+	// Total Missed Coding
+	"bug in test case":     "MissedCoding",
+	"missed staging build": "MissedCoding",
+	"code collison":        "MissedCoding",
+	// Total Missed Test Case
+	"additional test case": "MissedTestCase",
+	// Total Other Issue
+	"manual verified":      "OtherIssue",
+	"infrastructure":       "OtherIssue",
+	"bug existing feature": "OtherIssue",
+	"bug in test plan":     "OtherIssue",
+}
+
+// classifyAccidentBug maps a raw Accident Bug value to one of the breakdown
+// categories (MissedPRD, MissedTRD, MissedCoding, MissedTestCase, OtherIssue),
+// or "" when it matches none.
+func classifyAccidentBug(accidentBug string) string {
+	return accidentBugCategory[strings.ToLower(strings.TrimSpace(accidentBug))]
 }
 
 // classifyFromType maps a raw from_type value to "Regression" or "Smoke/Sanity",
